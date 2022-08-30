@@ -1,0 +1,12 @@
+{
+ "project_artifact": "aws4",
+ "project_author": "Anton Adamansky <adamansky@gmail.com>",
+ "project_base_lib": "iwnet",
+ "project_base_lib_cmake": "AddIWNET",
+ "project_base_lib_static": "IWNET::static",
+ "project_date": "Tue, 30 Aug 2022 21:51:52 +0700",
+ "project_description": "AWS Signature V4 HTTP API access C library",
+ "project_license": "Proprietary",
+ "project_name": "AWS4",
+ "project_website": ""
+}
