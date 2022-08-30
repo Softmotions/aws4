@@ -32,9 +32,14 @@ set(CMAKE_C_FLAGS_RELWITHDEBINFO "${CMAKE_C_FLAGS_RELEASE} -g")
 set(CMAKE_C_FLAGS_RELEASEWITHDEBINFO ${CMAKE_C_FLAGS_RELWITHDEBINFO})
 
 find_package(Threads REQUIRED CMAKE_THREAD_PREFER_PTHREAD)
+include(FindCURL)
+if(NOT CURL_FOUND)
+  message(FATAL_ERROR "Cannot find libcurl library")
+endif()
 
 include(AddIWNET)
-set(LINK_LIBS IWNET::static)
+
+set(LINK_LIBS IWNET::static ${CURL_LIBRARIES})
 
 include_directories(${CMAKE_CURRENT_SOURCE_DIR} ${CMAKE_BINARY_DIR}/include)
 add_definitions(-D_LARGEFILE_SOURCE)
