@@ -155,8 +155,22 @@ finish:
 
 static iwrc _cr_headers_add(struct xcurlreq *req, IWXSTR *xstr) {
   iwrc rc = 0;
+  IWPOOL *pool = 0;
+  RCB(finish, pool = iwpool_create_empty());
+  size_t len = 0;
+  for (struct curl_slist *h = req->headers; h; h = h->next) {
+    ++len;
+  }
+  struct iwn_pair *harr;
+  RCB(finish, harr = iwpool_alloc(sizeof(*harr), pool));
+  for (size_t i = 0; i < len; ++i) {
+    harr[i] = (struct iwn_pair) {
+      // TODO:
+    };
+  }
 
-
+finish:
+  iwpool_destroy(pool);
   return rc;
 }
 
