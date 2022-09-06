@@ -153,6 +153,66 @@ finish:
   return rc;
 }
 
+static iwrc _cr_header_fill(IWPOOL *pool, const char *spec, struct iwn_pair *p) {
+  memset(p, 0, sizeof(*p));
+
+  size_t len = strlen(spec);
+  char *buf = iwpool_alloc(len + 1, pool);
+  if (!buf) {
+    return iwrc_set_errno(IW_ERROR_ALLOC, errno);
+  }
+
+  memcpy(buf, spec, len);
+  buf[len] = '\0';
+
+  char *vp = 0;
+  p->key = buf;
+
+  for (int i = 0; i < len; ++i) {
+    if (vp == 0) {
+      if (buf[i] == ':') {
+        buf[i] = '\0';
+        p->key_len = i;
+        p->val = vp = buf + i + 1;
+      } else {
+        buf[i] = tolower(buf[i]);
+      }
+    } else {
+      if (!isspace(buf[i]) || !isspace(*vp)) {
+        *vp = buf[i];
+        vp++;
+      }
+    }
+  }
+  if (!vp) {
+    return IW_ERROR_INVALID_VALUE;
+  }
+  if (*vp != '\0') {
+    vp++;
+    *vp = '\0';
+  }
+  p->val_len = vp - p->val;
+
+  // Trim leading and trailing spaces
+  while (isspace(*p->key)) {
+    ++p->key;
+    --p->key_len;
+  }
+  while (p->key_len && isspace(p->key[p->key_len - 1])) {
+    --p->key_len;
+    *((char*) p->key + p->key_len) = '\0';
+  }
+  while (isspace(*p->val)) {
+    ++p->val;
+    --p->val_len;
+  }
+  while (p->val_len && isspace(p->val[p->val_len - 1])) {
+    --p->val_len;
+    p->val[p->val_len] = '\0';
+  }
+  return 0;
+}
+
 static iwrc _cr_headers_add(struct xcurlreq *req, IWXSTR *xstr) {
   iwrc rc = 0;
   IWPOOL *pool = 0;
@@ -162,11 +222,11 @@ static iwrc _cr_headers_add(struct xcurlreq *req, IWXSTR *xstr) {
     ++len;
   }
   struct iwn_pair *harr;
-  RCB(finish, harr = iwpool_alloc(sizeof(*harr), pool));
-  for (size_t i = 0; i < len; ++i) {
-    harr[i] = (struct iwn_pair) {
-      // TODO:
-    };
+  RCB(finish, harr = iwpool_alloc(sizeof(harr[0]) * len, pool));
+
+  len = 0;
+  for (struct curl_slist *h = req->headers; h; h = h->next) {
+    RCC(rc, finish, _cr_header_fill(pool, h->data, &harr[len++]));
   }
 
 finish:
