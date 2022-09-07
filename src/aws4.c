@@ -74,8 +74,8 @@ static iwrc _cr_uri_add(struct xcurlreq *req, IWXSTR *xstr) {
 }
 
 static int _cr_qs_pair_compare(const void *a, const void *b) {
-  const struct iwn_pair *p1 = a;
-  const struct iwn_pair *p2 = b;
+  const struct iwn_pair *p1 = *(struct iwn_pair**) a;
+  const struct iwn_pair *p2 = *(struct iwn_pair**) b;
   int ret = p1->key_len > p2->key_len ? 1 : p1->key_len < p2->key_len ? -1 : 0;
   if (ret) {
     return ret;
@@ -213,6 +213,16 @@ static iwrc _cr_header_fill(IWPOOL *pool, const char *spec, struct iwn_pair *p) 
   return 0;
 }
 
+static int _cr_header_pair_compare(const void *a, const void *b) {
+  const struct iwn_pair *h1 = a;
+  const struct iwn_pair *h2 = b;
+  int ret = h1->key_len > h2->key_len ? 1 : h1->key_len < h2->key_len ? -1 : 0;
+  if (ret) {
+    return ret;
+  }
+  return strncmp(h1->key, h2->key, h1->key_len);
+}
+
 static iwrc _cr_headers_add(struct xcurlreq *req, IWXSTR *xstr) {
   iwrc rc = 0;
   IWPOOL *pool = 0;
@@ -229,8 +239,72 @@ static iwrc _cr_headers_add(struct xcurlreq *req, IWXSTR *xstr) {
     RCC(rc, finish, _cr_header_fill(pool, h->data, &harr[len++]));
   }
 
+  qsort(harr, len, sizeof(harr[0]), _cr_header_pair_compare);
+
+  for (size_t i = 0; i < len; ++i) {
+    RCC(rc, finish, iwxstr_cat(xstr, harr[i].key, harr[i].key_len));
+    RCC(rc, finish, iwxstr_cat(xstr, "\n", 1));
+  }
+
+  RCC(rc, finish, iwxstr_cat(xstr, "\n", 1));
+
 finish:
   iwpool_destroy(pool);
+  return rc;
+}
+
+static int _cr_val_compare(const void *a, const void *b) {
+  const struct iwn_val *v1 = a;
+  const struct iwn_val *v2 = b;
+  int ret = v1->len > v2->len ? 1 : v1->len < v2->len ? -1 : 0;
+  if (ret) {
+    return ret;
+  }
+  return strncmp(v1->buf, v2->buf, v1->len);
+}
+
+static iwrc _cr_headers_signed_add(const struct aws4_request_sign_spec *spec, IWXSTR *xstr) {
+  iwrc rc = 0;
+  size_t cnt = 0;
+  struct iwn_val *vals = 0;
+  struct iwn_vals hlist = spec->headers_to_sign;
+  struct iwn_val host = { .buf = "host", .len = IW_LLEN("host") };
+  if (!hlist.first) { // Add at least host headers
+    hlist.first = &host;
+  }
+
+  for (struct iwn_val *v = hlist.first; v; v = v->next) {
+    ++cnt;
+  }
+
+  vals = malloc(sizeof(*vals) * cnt);
+  if (!vals) {
+    return iwrc_set_errno(IW_ERROR_ALLOC, errno);
+  }
+
+  cnt = 0;
+  for (struct iwn_val *v = hlist.first; v; v = v->next) {
+    vals[cnt++] = *v;
+  }
+
+  qsort(vals, cnt, sizeof(vals[0]), _cr_val_compare);
+
+  for (size_t i = 0; i < cnt; ++i) {
+    if (i) {
+      RCC(rc, finish, iwxstr_cat(xstr, ";", 1));
+    }
+    RCC(rc, finish, iwxstr_cat(xstr, vals[i].buf, vals[i].len));
+    char *ep = iwxstr_ptr(xstr) + iwxstr_size(xstr);
+    char *sp = ep - vals[i].len;
+    for ( ; sp < ep; ++sp) {
+      *sp = tolower(*sp);
+    }
+  }
+
+  RCC(rc, finish, iwxstr_cat(xstr, "\n", 1));
+
+finish:
+  free(vals);
   return rc;
 }
 
@@ -244,6 +318,7 @@ iwrc aws4_request_sign(const struct aws4_request_sign_spec *spec, struct xcurlre
   RCC(rc, finish, _cr_uri_add(req, cr));
   RCC(rc, finish, _cr_qs_add(req, cr));
   RCC(rc, finish, _cr_headers_add(req, cr));
+  RCC(rc, finish, _cr_headers_signed_add(spec, cr));
 
 finish:
   iwxstr_destroy(cr);
