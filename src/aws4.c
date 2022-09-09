@@ -6,26 +6,85 @@
 #include <iwnet/iwn_codec.h>
 #include <iwnet/bearssl_hash.h>
 
+#include <time.h>
 #include <errno.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 #include <assert.h>
 
-static iwrc _cr_method_add(struct xcurlreq *req, IWXSTR *xstr) {
+struct _ctx {
+  IWXSTR *xstr;
+  struct xcurlreq *req;
+  const struct aws4_request_sign_spec *spec;
+  char datetime[17]; ///< YYYYMMDD'T'HHMMSS'Z',
+};
+
+static iwrc _ctx_init(struct _ctx *c) {
+  iwrc rc = 0;
+  time_t t;
+
+  t = time(0);
+  if (t == (time_t) -1) {
+    return iwrc_set_errno(IW_ERROR_ERRNO, errno);
+  }
+
+  struct tm tm;
+  if (!gmtime_r(&t, &tm)) {
+    return iwrc_set_errno(IW_ERROR_ERRNO, errno);
+  }
+
+  // YYYYMMDD'T'HHMMSS'Z',
+  if (strftime(c->datetime, sizeof(c->datetime), "%Y%m%dT%H%M%SZ", &tm) == 0) {
+    return IW_ERROR_FAIL;
+  }
+
+  bool host_found = false;
+  bool accept_found = false;
+  bool user_agent_found = false;
+
+  // Set host header
+  for (struct curl_slist *h = c->req->headers; h; h = h->next) {
+    if (strncasecmp(h->data, "host:", IW_LLEN("host:")) == 0) {
+      host_found = true;
+    } else if (strncasecmp(h->data, "accept:", IW_LLEN("accept:")) == 0) {
+      accept_found = true;
+    } else if (strncasecmp(h->data, "user-agent:", IW_LLEN("user-agent:")) == 0) {
+      user_agent_found = false;
+    }
+  }
+
+  if (!user_agent_found) {
+    xcurlreq_hdr_add(c->req, "user-agent", IW_LLEN("user-agent"), "aws4/1.0", IW_LLEN("aws4/1.0"));
+  }
+
+  if (!host_found) {
+    xcurlreq_hdr_add(c->req, "host", IW_LLEN("host"), c->spec->aws_host, -1);
+  }
+
+  if (!accept_found) {
+    xcurlreq_hdr_add(c->req, "accept", IW_LLEN("accept"), "*/*", IW_LLEN("*/*"));
+  }
+
+  xcurlreq_hdr_add(c->req, "x-amz-date", IW_LLEN("x-amz-date"), c->datetime, -1);
+
+  return 0;
+}
+
+static iwrc _sr_method_add(struct _ctx *c) {
   const char *method = "GET";
-  if (req->flags & XCURLREQ_POST) {
+  if (c->req->flags & XCURLREQ_POST) {
     method = "POST";
-  } else if (req->flags & XCURLREQ_PUT) {
+  } else if (c->req->flags & XCURLREQ_PUT) {
     method = "PUT";
-  } else if (req->flags & XCURLREQ_DEL) {
+  } else if (c->req->flags & XCURLREQ_DEL) {
     method = "DELETE";
-  } else if (req->flags & XCURLREQ_HEAD) {
+  } else if (c->req->flags & XCURLREQ_HEAD) {
     method = "HEAD";
-  } else if (req->flags & XCURLREQ_OPTS) {
+  } else if (c->req->flags & XCURLREQ_OPTS) {
     method = "OPTIONS";
   }
-  return iwxstr_printf(xstr, "%s\n", method);
+  return iwxstr_printf(c->xstr, "%s\n", method);
 }
 
 static IW_ALLOC char* _uri_encode(const char *buf, size_t buf_len, int rounds) {
@@ -43,14 +102,14 @@ static IW_ALLOC char* _uri_encode(const char *buf, size_t buf_len, int rounds) {
   return res;
 }
 
-static IW_ALLOC char* _cr_section_create(struct xcurlreq *req, const char *sp, const char *ep) {
+static IW_ALLOC char* _sr_section_create(struct xcurlreq *req, const char *sp, const char *ep) {
   assert(ep > sp);
   int rounds = (req->flags & AWS_SERVICE_S3) ? 1 : 2;
   return _uri_encode(sp, ep - sp, rounds);
 }
 
-static iwrc _cr_uri_add(struct xcurlreq *req, IWXSTR *xstr) {
-  const char *sp = req->path;
+static iwrc _sr_uri_add(struct _ctx *c) {
+  const char *sp = c->req->path;
   const char *ep = sp;
   while (*ep) {
     while (*ep && *ep == '/') {
@@ -61,18 +120,18 @@ static iwrc _cr_uri_add(struct xcurlreq *req, IWXSTR *xstr) {
       ++ep;
     }
     if (ep > sp) {
-      char *s = _cr_section_create(req, sp, ep);
+      char *s = _sr_section_create(c->req, sp, ep);
       if (!s) {
         return iwrc_set_errno(IW_ERROR_ALLOC, errno);
       }
-      RCR(iwxstr_printf(xstr, "/%s", s));
-    } else if (sp == req->path) {
-      RCR(iwxstr_cat(xstr, "/", 1));
+      RCR(iwxstr_printf(c->xstr, "/%s", s));
+    } else if (sp == c->req->path) {
+      RCR(iwxstr_cat(c->xstr, "/", 1));
       break;
     }
     sp = ep;
   }
-  return iwxstr_cat(xstr, "\n", 1);
+  return iwxstr_cat(c->xstr, "\n", 1);
 }
 
 static int _cr_qs_pair_compare(const void *a, const void *b) {
@@ -93,9 +152,9 @@ static int _cr_qs_pair_compare(const void *a, const void *b) {
   return strncmp(p1->val, p2->val, p1->val_len);
 }
 
-static iwrc _cr_qs_add(struct xcurlreq *req, IWXSTR *xstr) {
-  if (!req->_qxstr || iwxstr_size(req->_qxstr) == 0) {
-    return iwxstr_cat(xstr, "\n", 1);
+static iwrc _sr_qs_add(struct _ctx *c) {
+  if (!c->req->_qxstr || iwxstr_size(c->req->_qxstr) == 0) {
+    return iwxstr_cat(c->xstr, "\n", 1);
   }
   iwrc rc = 0;
   IWPOOL *pool = 0;
@@ -104,10 +163,10 @@ static iwrc _cr_qs_add(struct xcurlreq *req, IWXSTR *xstr) {
   char *buf = 0;
   size_t buflen = 0;
 
-  size_t len = iwxstr_size(req->_qxstr);
+  size_t len = iwxstr_size(c->req->_qxstr);
   RCB(finish, pool = iwpool_create_empty());
 
-  char *qs = iwpool_strndup2(pool, iwxstr_ptr(req->_qxstr), len);
+  char *qs = iwpool_strndup2(pool, iwxstr_ptr(c->req->_qxstr), len);
   RCB(finish, qs);
   RCC(rc, finish, iwn_wf_parse_query_inplace(pool, &pairs, qs, len));
 
@@ -131,11 +190,11 @@ static iwrc _cr_qs_add(struct xcurlreq *req, IWXSTR *xstr) {
       buflen = len;
     }
     if (i) {
-      RCC(rc, finish, iwxstr_cat(xstr, "&", 1));
+      RCC(rc, finish, iwxstr_cat(c->xstr, "&", 1));
     }
     iwn_url_encode(p->key, p->key_len, buf, buflen);
-    RCC(rc, finish, iwxstr_cat(xstr, buf, len));
-    RCC(rc, finish, iwxstr_cat(xstr, "=", 1));
+    RCC(rc, finish, iwxstr_cat(c->xstr, buf, len));
+    RCC(rc, finish, iwxstr_cat(c->xstr, "=", 1));
     if (p->val_len) {
       len = iwn_url_encoded_aws_len(p->val, p->val_len);
       if (len > buflen) {
@@ -143,11 +202,11 @@ static iwrc _cr_qs_add(struct xcurlreq *req, IWXSTR *xstr) {
         buflen = len;
       }
       iwn_url_encode_aws(p->val, p->val_len, buf, buflen);
-      RCC(rc, finish, iwxstr_cat(xstr, buf, len));
+      RCC(rc, finish, iwxstr_cat(c->xstr, buf, len));
     }
   }
 
-  RCC(rc, finish, iwxstr_cat(xstr, "\n", 1));
+  RCC(rc, finish, iwxstr_cat(c->xstr, "\n", 1));
 
 finish:
   free(buf);
@@ -225,30 +284,30 @@ static int _cr_header_pair_compare(const void *a, const void *b) {
   return strncmp(h1->key, h2->key, h1->key_len);
 }
 
-static iwrc _cr_headers_add(struct xcurlreq *req, IWXSTR *xstr) {
+static iwrc _sr_headers_add(struct _ctx *c) {
   iwrc rc = 0;
   IWPOOL *pool = 0;
   RCB(finish, pool = iwpool_create_empty());
   size_t len = 0;
-  for (struct curl_slist *h = req->headers; h; h = h->next) {
+  for (struct curl_slist *h = c->req->headers; h; h = h->next) {
     ++len;
   }
   struct iwn_pair *harr;
   RCB(finish, harr = iwpool_alloc(sizeof(harr[0]) * len, pool));
 
   len = 0;
-  for (struct curl_slist *h = req->headers; h; h = h->next) {
+  for (struct curl_slist *h = c->req->headers; h; h = h->next) {
     RCC(rc, finish, _cr_header_fill(pool, h->data, &harr[len++]));
   }
 
   qsort(harr, len, sizeof(harr[0]), _cr_header_pair_compare);
 
   for (size_t i = 0; i < len; ++i) {
-    RCC(rc, finish, iwxstr_cat(xstr, harr[i].key, harr[i].key_len));
-    RCC(rc, finish, iwxstr_cat(xstr, "\n", 1));
+    RCC(rc, finish, iwxstr_cat(c->xstr, harr[i].key, harr[i].key_len));
+    RCC(rc, finish, iwxstr_cat(c->xstr, "\n", 1));
   }
 
-  RCC(rc, finish, iwxstr_cat(xstr, "\n", 1));
+  RCC(rc, finish, iwxstr_cat(c->xstr, "\n", 1));
 
 finish:
   iwpool_destroy(pool);
@@ -265,11 +324,11 @@ static int _cr_val_compare(const void *a, const void *b) {
   return strncmp(v1->buf, v2->buf, v1->len);
 }
 
-static iwrc _cr_headers_signed_add(const struct aws4_request_sign_spec *spec, IWXSTR *xstr) {
+static iwrc _sr_headers_signed_add(struct _ctx *c) {
   iwrc rc = 0;
   size_t cnt = 0;
   struct iwn_val *vals = 0;
-  struct iwn_vals hlist = spec->headers_to_sign;
+  struct iwn_vals hlist = c->spec->headers_to_sign;
   struct iwn_val host = { .buf = "host", .len = IW_LLEN("host") };
   if (!hlist.first) { // Add at least host headers
     hlist.first = &host;
@@ -293,40 +352,40 @@ static iwrc _cr_headers_signed_add(const struct aws4_request_sign_spec *spec, IW
 
   for (size_t i = 0; i < cnt; ++i) {
     if (i) {
-      RCC(rc, finish, iwxstr_cat(xstr, ";", 1));
+      RCC(rc, finish, iwxstr_cat(c->xstr, ";", 1));
     }
-    RCC(rc, finish, iwxstr_cat(xstr, vals[i].buf, vals[i].len));
-    char *ep = iwxstr_ptr(xstr) + iwxstr_size(xstr);
+    RCC(rc, finish, iwxstr_cat(c->xstr, vals[i].buf, vals[i].len));
+    char *ep = iwxstr_ptr(c->xstr) + iwxstr_size(c->xstr);
     char *sp = ep - vals[i].len;
     for ( ; sp < ep; ++sp) {
       *sp = tolower(*sp);
     }
   }
 
-  RCC(rc, finish, iwxstr_cat(xstr, "\n", 1));
+  RCC(rc, finish, iwxstr_cat(c->xstr, "\n", 1));
 
 finish:
   free(vals);
   return rc;
 }
 
-static iwrc _cr_payload_hash_add(struct xcurlreq *req, IWXSTR *xstr) {
-  if (req->payload_len == 0) {
-    return iwxstr_cat(xstr, "\n", 1);
+static iwrc _sr_payload_hash_add(struct _ctx *c) {
+  if (c->req->payload_len == 0) {
+    return iwxstr_cat(c->xstr, "\n", 1);
   }
   char hash[br_sha256_SIZE * 2 + 1];
   uint8_t hash_bits[br_sha256_SIZE];
   br_sha256_context ctx;
   br_sha256_init(&ctx);
-  br_sha256_update(&ctx, req->payload, req->payload_len);
+  br_sha256_update(&ctx, c->req->payload, c->req->payload_len);
   br_sha256_out(&ctx, hash_bits);
   iwbin2hex(hash, sizeof(hash), hash_bits, sizeof(hash_bits));
-  RCR(iwxstr_cat(xstr, hash, sizeof(hash) - 1));
-  RCR(iwxstr_cat(xstr, "\n", 1));
+  RCR(iwxstr_cat(c->xstr, hash, sizeof(hash) - 1));
+  RCR(iwxstr_cat(c->xstr, "\n", 1));
   return 0;
 }
 
-static void _cr_fill_request_hash(IWXSTR *xstr, char out[static br_sha256_SIZE * 2]) {
+static void _sr_fill_request_hash(IWXSTR *xstr, char out[static br_sha256_SIZE * 2]) {
   uint8_t hash_bits[br_sha256_SIZE];
   br_sha256_context ctx;
   br_sha256_init(&ctx);
@@ -336,23 +395,37 @@ static void _cr_fill_request_hash(IWXSTR *xstr, char out[static br_sha256_SIZE *
 }
 
 iwrc aws4_request_sign(const struct aws4_request_sign_spec *spec, struct xcurlreq *req) {
+  if (!spec->aws_host) {
+    iwlog_error2("Missing required spec->aws_host value");
+    return IW_ERROR_INVALID_ARGS;
+  }
+
   iwrc rc = 0;
   char request_hash[br_sha256_SIZE * 2 + 1];
   IWXSTR *xstr = iwxstr_new();
   if (!xstr) {
     return iwrc_set_errno(IW_ERROR_ALLOC, errno);
   }
+  struct _ctx c = {
+    .req  = req,
+    .spec = spec,
+    .xstr = xstr
+  };
 
-  RCC(rc, finish, _cr_method_add(req, xstr));
-  RCC(rc, finish, _cr_uri_add(req, xstr));
-  RCC(rc, finish, _cr_qs_add(req, xstr));
-  RCC(rc, finish, _cr_headers_add(req, xstr));
-  RCC(rc, finish, _cr_headers_signed_add(spec, xstr));
-  RCC(rc, finish, _cr_payload_hash_add(req, xstr));
+  RCC(rc, finish, _ctx_init(&c));
+  RCC(rc, finish, _sr_method_add(&c));
+  RCC(rc, finish, _sr_uri_add(&c));
+  RCC(rc, finish, _sr_qs_add(&c));
+  RCC(rc, finish, _sr_headers_add(&c));
+  RCC(rc, finish, _sr_headers_signed_add(&c));
+  RCC(rc, finish, _sr_payload_hash_add(&c));
 
-  _cr_fill_request_hash(xstr, request_hash);
+  _sr_fill_request_hash(xstr, request_hash);
   request_hash[br_sha256_SIZE * 2] = '\0';
   iwxstr_clear(xstr);
+
+  // String to sign
+  RCC(rc, finish, iwxstr_cat(xstr, "AWS4-HMAC-SHA256\n", IW_LLEN("AWS4-HMAC-SHA256\n")));
 
 
 finish:
