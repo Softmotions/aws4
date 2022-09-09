@@ -408,6 +408,14 @@ iwrc aws4_request_sign(const struct aws4_request_sign_spec *spec, struct xcurlre
     iwlog_error2("Missing required spec->aws_region");
     return IW_ERROR_INVALID_ARGS;
   }
+  if (!spec->aws_key) {
+    iwlog_error2("Missing required spec->aws_key");
+    return IW_ERROR_INVALID_ARGS;
+  }
+  if (!spec->aws_secret_key) {
+    iwlog_error2("Missing required spec->aws_secret_key");
+    return IW_ERROR_INVALID_ARGS;
+  }
 
   iwrc rc = 0;
   char request_hash[br_sha256_SIZE * 2];
