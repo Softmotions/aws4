@@ -2,7 +2,9 @@
 #include "config.h"
 
 #include <iowow/iwlog.h>
+#include <iowow/iwconv.h>
 #include <iwnet/iwn_codec.h>
+#include <iwnet/bearssl_hash.h>
 
 #include <errno.h>
 #include <stdio.h>
@@ -308,19 +310,52 @@ finish:
   return rc;
 }
 
+static iwrc _cr_payload_hash_add(struct xcurlreq *req, IWXSTR *xstr) {
+  if (req->payload_len == 0) {
+    return iwxstr_cat(xstr, "\n", 1);
+  }
+  char hash[br_sha256_SIZE * 2 + 1];
+  uint8_t hash_bits[br_sha256_SIZE];
+  br_sha256_context ctx;
+  br_sha256_init(&ctx);
+  br_sha256_update(&ctx, req->payload, req->payload_len);
+  br_sha256_out(&ctx, hash_bits);
+  iwbin2hex(hash, sizeof(hash), hash_bits, sizeof(hash_bits));
+  RCR(iwxstr_cat(xstr, hash, sizeof(hash) - 1));
+  RCR(iwxstr_cat(xstr, "\n", 1));
+  return 0;
+}
+
+static void _cr_fill_request_hash(IWXSTR *xstr, char out[static br_sha256_SIZE * 2]) {
+  uint8_t hash_bits[br_sha256_SIZE];
+  br_sha256_context ctx;
+  br_sha256_init(&ctx);
+  br_sha256_update(&ctx, iwxstr_ptr(xstr), iwxstr_size(xstr));
+  br_sha256_out(&ctx, hash_bits);
+  iwbin2hex(out, br_sha256_SIZE * 2, hash_bits, sizeof(hash_bits));
+}
+
 iwrc aws4_request_sign(const struct aws4_request_sign_spec *spec, struct xcurlreq *req) {
   iwrc rc = 0;
-  IWXSTR *cr = iwxstr_new();
-  if (!cr) {
+  char request_hash[br_sha256_SIZE * 2 + 1];
+  IWXSTR *xstr = iwxstr_new();
+  if (!xstr) {
     return iwrc_set_errno(IW_ERROR_ALLOC, errno);
   }
-  RCC(rc, finish, _cr_method_add(req, cr));
-  RCC(rc, finish, _cr_uri_add(req, cr));
-  RCC(rc, finish, _cr_qs_add(req, cr));
-  RCC(rc, finish, _cr_headers_add(req, cr));
-  RCC(rc, finish, _cr_headers_signed_add(spec, cr));
+
+  RCC(rc, finish, _cr_method_add(req, xstr));
+  RCC(rc, finish, _cr_uri_add(req, xstr));
+  RCC(rc, finish, _cr_qs_add(req, xstr));
+  RCC(rc, finish, _cr_headers_add(req, xstr));
+  RCC(rc, finish, _cr_headers_signed_add(spec, xstr));
+  RCC(rc, finish, _cr_payload_hash_add(req, xstr));
+
+  _cr_fill_request_hash(xstr, request_hash);
+  request_hash[br_sha256_SIZE * 2] = '\0';
+  iwxstr_clear(xstr);
+
 
 finish:
-  iwxstr_destroy(cr);
+  iwxstr_destroy(xstr);
   return rc;
 }
