@@ -17,7 +17,9 @@ struct _ctx {
   IWXSTR *xstr;
   struct xcurlreq *req;
   const struct aws4_request_sign_spec *spec;
-  char datetime[17]; ///< YYYYMMDD'T'HHMMSS'Z',
+  const char *service;
+  char datetime[20]; ///< YYYYMMDD'T'HHMMSS'Z',
+  char date[10];     ///< YYYYMMDD
 };
 
 static iwrc _ctx_init(struct _ctx *c) {
@@ -38,6 +40,8 @@ static iwrc _ctx_init(struct _ctx *c) {
   if (strftime(c->datetime, sizeof(c->datetime), "%Y%m%dT%H%M%SZ", &tm) == 0) {
     return IW_ERROR_FAIL;
   }
+  memcpy(c->date, c->datetime, 8);
+  c->date[8] = '\0';
 
   bool host_found = false;
   bool accept_found = false;
@@ -67,6 +71,7 @@ static iwrc _ctx_init(struct _ctx *c) {
   }
 
   xcurlreq_hdr_add(c->req, "x-amz-date", IW_LLEN("x-amz-date"), c->datetime, -1);
+
 
   return 0;
 }
@@ -396,12 +401,16 @@ static void _sr_fill_request_hash(IWXSTR *xstr, char out[static br_sha256_SIZE *
 
 iwrc aws4_request_sign(const struct aws4_request_sign_spec *spec, struct xcurlreq *req) {
   if (!spec->aws_host) {
-    iwlog_error2("Missing required spec->aws_host value");
+    iwlog_error2("Missing required spec->aws_host");
+    return IW_ERROR_INVALID_ARGS;
+  }
+  if (!spec->aws_region) {
+    iwlog_error2("Missing required spec->aws_region");
     return IW_ERROR_INVALID_ARGS;
   }
 
   iwrc rc = 0;
-  char request_hash[br_sha256_SIZE * 2 + 1];
+  char request_hash[br_sha256_SIZE * 2];
   IWXSTR *xstr = iwxstr_new();
   if (!xstr) {
     return iwrc_set_errno(IW_ERROR_ALLOC, errno);
@@ -412,6 +421,19 @@ iwrc aws4_request_sign(const struct aws4_request_sign_spec *spec, struct xcurlre
     .xstr = xstr
   };
 
+  switch (spec->aws_service) {
+    case AWS_SERVICE_S3:
+      c.service = "s3";
+      break;
+    case AWS_SERVICE_DYNAMODB:
+      c.service = "dynamodb";
+      break;
+    default:
+      iwlog_error("Invalid AWS service specidif");
+      rc = IW_ERROR_INVALID_ARGS;
+      goto finish;
+  }
+
   RCC(rc, finish, _ctx_init(&c));
   RCC(rc, finish, _sr_method_add(&c));
   RCC(rc, finish, _sr_uri_add(&c));
@@ -421,12 +443,15 @@ iwrc aws4_request_sign(const struct aws4_request_sign_spec *spec, struct xcurlre
   RCC(rc, finish, _sr_payload_hash_add(&c));
 
   _sr_fill_request_hash(xstr, request_hash);
-  request_hash[br_sha256_SIZE * 2] = '\0';
   iwxstr_clear(xstr);
 
   // String to sign
   RCC(rc, finish, iwxstr_cat(xstr, "AWS4-HMAC-SHA256\n", IW_LLEN("AWS4-HMAC-SHA256\n")));
+  RCC(rc, finish, iwxstr_printf(xstr, "%s\n", c.datetime));
+  RCC(rc, finish, iwxstr_printf(xstr, "%s/%s/%s/aws4_request\n", c.date, spec->aws_region, c.service));
+  RCC(rc, finish, iwxstr_cat(xstr, request_hash, br_sha256_SIZE * 2));
 
+  // Calculate signature
 
 finish:
   iwxstr_destroy(xstr);
