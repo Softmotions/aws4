@@ -5,6 +5,7 @@
 #include <iowow/iwconv.h>
 #include <iwnet/iwn_codec.h>
 #include <iwnet/bearssl_hash.h>
+#include <iwnet/bearssl_hmac.h>
 
 #include <time.h>
 #include <errno.h>
@@ -15,6 +16,7 @@
 
 struct _ctx {
   IWXSTR *xstr;
+  IWXSTR *signed_headers;
   struct xcurlreq *req;
   const struct aws4_request_sign_spec *spec;
   const char *service;
@@ -319,58 +321,12 @@ finish:
   return rc;
 }
 
-static int _cr_val_compare(const void *a, const void *b) {
-  const struct iwn_val *v1 = a;
-  const struct iwn_val *v2 = b;
-  int ret = v1->len > v2->len ? 1 : v1->len < v2->len ? -1 : 0;
-  if (ret) {
-    return ret;
-  }
-  return strncmp(v1->buf, v2->buf, v1->len);
-}
-
 static iwrc _sr_headers_signed_add(struct _ctx *c) {
   iwrc rc = 0;
-  size_t cnt = 0;
-  struct iwn_val *vals = 0;
-  struct iwn_vals hlist = c->spec->headers_to_sign;
-  struct iwn_val host = { .buf = "host", .len = IW_LLEN("host") };
-  if (!hlist.first) { // Add at least host headers
-    hlist.first = &host;
-  }
-
-  for (struct iwn_val *v = hlist.first; v; v = v->next) {
-    ++cnt;
-  }
-
-  vals = malloc(sizeof(*vals) * cnt);
-  if (!vals) {
-    return iwrc_set_errno(IW_ERROR_ALLOC, errno);
-  }
-
-  cnt = 0;
-  for (struct iwn_val *v = hlist.first; v; v = v->next) {
-    vals[cnt++] = *v;
-  }
-
-  qsort(vals, cnt, sizeof(vals[0]), _cr_val_compare);
-
-  for (size_t i = 0; i < cnt; ++i) {
-    if (i) {
-      RCC(rc, finish, iwxstr_cat(c->xstr, ";", 1));
-    }
-    RCC(rc, finish, iwxstr_cat(c->xstr, vals[i].buf, vals[i].len));
-    char *ep = iwxstr_ptr(c->xstr) + iwxstr_size(c->xstr);
-    char *sp = ep - vals[i].len;
-    for ( ; sp < ep; ++sp) {
-      *sp = tolower(*sp);
-    }
-  }
-
+  RCC(rc, finish, iwxstr_cat(c->xstr, "content-type;host;x-amz-date", -1));
+  RCB(finish, c->signed_headers = iwxstr_new_clone(c->xstr));
   RCC(rc, finish, iwxstr_cat(c->xstr, "\n", 1));
-
 finish:
-  free(vals);
   return rc;
 }
 
@@ -390,13 +346,32 @@ static iwrc _sr_payload_hash_add(struct _ctx *c) {
   return 0;
 }
 
-static void _sr_fill_request_hash(IWXSTR *xstr, char out[static br_sha256_SIZE * 2]) {
+static void _sr_fill_request_hash(IWXSTR *xstr, char out[static br_sha256_SIZE * 2 + 1]) {
   uint8_t hash_bits[br_sha256_SIZE];
   br_sha256_context ctx;
   br_sha256_init(&ctx);
   br_sha256_update(&ctx, iwxstr_ptr(xstr), iwxstr_size(xstr));
   br_sha256_out(&ctx, hash_bits);
   iwbin2hex(out, br_sha256_SIZE * 2, hash_bits, sizeof(hash_bits));
+}
+
+static void _hmac(
+  const char *key, ssize_t key_len,
+  const char *data, ssize_t data_len,
+  char out_buf[br_sha256_SIZE]
+  ) {
+  if (key_len < 0) {
+    key_len = strlen(key);
+  }
+  if (data_len < 0) {
+    data_len = strlen(data);
+  }
+  br_hmac_context hc;
+  br_hmac_key_context kc;
+  br_hmac_key_init(&kc, &br_sha256_vtable, key, key_len);
+  br_hmac_init(&hc, &kc, 0);
+  br_hmac_update(&hc, data, data_len);
+  br_hmac_out(&hc, out_buf);
 }
 
 iwrc aws4_request_sign(const struct aws4_request_sign_spec *spec, struct xcurlreq *req) {
@@ -418,11 +393,13 @@ iwrc aws4_request_sign(const struct aws4_request_sign_spec *spec, struct xcurlre
   }
 
   iwrc rc = 0;
-  char request_hash[br_sha256_SIZE * 2];
-  IWXSTR *xstr = iwxstr_new();
-  if (!xstr) {
-    return iwrc_set_errno(IW_ERROR_ALLOC, errno);
-  }
+  char hash[br_sha256_SIZE];
+  char hashx[br_sha256_SIZE * 2 + 1]; // hex hash representation
+
+  IWXSTR *xstr2 = 0, *xstr = iwxstr_new();
+  RCB(finish, xstr);
+  RCB(finish, xstr2 = iwxstr_new());
+
   struct _ctx c = {
     .req  = req,
     .spec = spec,
@@ -450,18 +427,40 @@ iwrc aws4_request_sign(const struct aws4_request_sign_spec *spec, struct xcurlre
   RCC(rc, finish, _sr_headers_signed_add(&c));
   RCC(rc, finish, _sr_payload_hash_add(&c));
 
-  _sr_fill_request_hash(xstr, request_hash);
+  _sr_fill_request_hash(xstr, hashx);
   iwxstr_clear(xstr);
 
   // String to sign
-  RCC(rc, finish, iwxstr_cat(xstr, "AWS4-HMAC-SHA256\n", IW_LLEN("AWS4-HMAC-SHA256\n")));
-  RCC(rc, finish, iwxstr_printf(xstr, "%s\n", c.datetime));
-  RCC(rc, finish, iwxstr_printf(xstr, "%s/%s/%s/aws4_request\n", c.date, spec->aws_region, c.service));
-  RCC(rc, finish, iwxstr_cat(xstr, request_hash, br_sha256_SIZE * 2));
+  iwxstr_clear(xstr2);
+  RCC(rc, finish, iwxstr_cat(xstr2, "AWS4-HMAC-SHA256\n", IW_LLEN("AWS4-HMAC-SHA256\n")));
+  RCC(rc, finish, iwxstr_printf(xstr2, "%s\n", c.datetime));
+  RCC(rc, finish, iwxstr_printf(xstr2, "%s/%s/%s/aws4_request\n", c.date, spec->aws_region, c.service));
+  RCC(rc, finish, iwxstr_cat(xstr2, hashx, br_sha256_SIZE * 2));
+
+  // Calculate signing key
+  iwxstr_clear(xstr);
+  RCC(rc, finish, iwxstr_cat(xstr, "AWS4", IW_LLEN("AWS4")));
+  RCC(rc, finish, iwxstr_cat(xstr, spec->aws_secret_key, strlen(spec->aws_secret_key)));
+  _hmac(iwxstr_ptr(xstr), iwxstr_size(xstr), c.date, -1, hash);
+  _hmac(hash, br_sha256_SIZE, spec->aws_region, -1, hash);
+  _hmac(hash, br_sha256_SIZE, c.service, -1, hash);
+  _hmac(hash, br_sha256_SIZE, "aws4_request", IW_LLEN("aws4_request"), hash);
 
   // Calculate signature
+  _hmac(hash, br_sha256_SIZE, iwxstr_ptr(xstr2), iwxstr_size(xstr2), hash);
+
+  // Add signature
+  // Authorization: algorithm Credential=access key ID/credential scope,
+  //                SignedHeaders=SignedHeaders, Signature=signature
+  iwxstr_clear(xstr);
+  RCC(rc, finish,
+      iwxstr_printf(xstr, "AWS-HMAC-SHA256 Credential=%s/%s/%s/%s/aws4_request, SignedHeaders=%s, Signature=%s",
+                    spec->aws_key, c.date, spec->aws_region, c.service,
+                    iwxstr_ptr(c.signed_headers), iwxstr_ptr(xstr2)));
 
 finish:
   iwxstr_destroy(xstr);
+  iwxstr_destroy(xstr2);
+  iwxstr_destroy(c.signed_headers);
   return rc;
 }

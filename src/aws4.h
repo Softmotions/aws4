@@ -12,7 +12,6 @@ struct aws4_request_sign_spec {
   const char     *aws_secret_key;
   const char     *aws_host;
   const char     *aws_region;
-  struct iwn_vals headers_to_sign; ///< List of header names to sign
   uint32_t aws_service;
 };
 
