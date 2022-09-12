@@ -346,7 +346,6 @@ static iwrc _sr_headers_signed_add(struct _ctx *c) {
 
   qsort(tokens, cnt, sizeof(*tokens), _sr_header_compare);
 
-  RCB(finish, c->signed_headers = iwxstr_new2(iwxstr_size(xstr)));
   for (const char **hh = tokens, *ph = 0; *hh; ++hh) {
     if (ph && strcmp(*hh, ph) == 0) {
       continue;
