@@ -74,7 +74,6 @@ static iwrc _ctx_init(struct _ctx *c) {
 
   xcurlreq_hdr_add(c->req, "x-amz-date", IW_LLEN("x-amz-date"), c->datetime, -1);
 
-
   return 0;
 }
 
@@ -449,7 +448,7 @@ iwrc aws4_request_sign(const struct aws4_request_sign_spec *spec, struct xcurlre
   // Calculate signature
   _hmac(hash, br_sha256_SIZE, iwxstr_ptr(xstr2), iwxstr_size(xstr2), hash);
 
-  // Add signature
+  // Add signature Authorization header.
   // Authorization: algorithm Credential=access key ID/credential scope,
   //                SignedHeaders=SignedHeaders, Signature=signature
   iwxstr_clear(xstr);
@@ -457,6 +456,8 @@ iwrc aws4_request_sign(const struct aws4_request_sign_spec *spec, struct xcurlre
       iwxstr_printf(xstr, "AWS-HMAC-SHA256 Credential=%s/%s/%s/%s/aws4_request, SignedHeaders=%s, Signature=%s",
                     spec->aws_key, c.date, spec->aws_region, c.service,
                     iwxstr_ptr(c.signed_headers), iwxstr_ptr(xstr2)));
+
+  xcurlreq_hdr_add(req, "Authorization", IW_LLEN("Authorization"), iwxstr_ptr(xstr), iwxstr_size(xstr));
 
 finish:
   iwxstr_destroy(xstr);
