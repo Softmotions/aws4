@@ -320,12 +320,48 @@ finish:
   return rc;
 }
 
+static int _sr_header_compare(const void *a, const void *b) {
+  const char *p1 = *(const char**) a;
+  const char *p2 = *(const char**) b;
+  return strcmp(p1, p2);
+}
+
 static iwrc _sr_headers_signed_add(struct _ctx *c) {
   iwrc rc = 0;
-  RCC(rc, finish, iwxstr_cat(c->xstr, "content-type;host;x-amz-date", -1));
-  RCB(finish, c->signed_headers = iwxstr_new_clone(c->xstr));
+  int cnt = 0;
+  IWPOOL *pool = 0;
+  IWXSTR *xstr = 0;
+
+  RCB(finish, pool = iwpool_create_empty());
+  RCB(finish, xstr = iwxstr_new_printf("content-type;host;x-amz-date"));
+  if (c->spec->signed_headers) {
+    RCC(rc, finish, iwxstr_cat(xstr, ";", 1));
+    RCC(rc, finish, iwxstr_cat2(xstr, c->spec->signed_headers));
+  }
+
+  const char **tokens = iwpool_split_string(pool, iwxstr_ptr(xstr), ";", true);
+  for (const char **hh = tokens; hh; ++hh) {
+    ++cnt;
+  }
+
+  qsort(tokens, cnt, sizeof(*tokens), _sr_header_compare);
+
+  RCB(finish, c->signed_headers = iwxstr_new2(iwxstr_size(xstr)));
+  for (const char **hh = tokens, *ph = 0; *hh; ++hh) {
+    if (ph && strcmp(*hh, ph) == 0) {
+      continue;
+    }
+    ph = *hh;
+    if (hh != tokens) {
+      RCC(rc, finish, iwxstr_cat(c->xstr, ";", 1));
+    }
+    RCC(rc, finish, iwxstr_cat2(c->xstr, *hh));
+  }
   RCC(rc, finish, iwxstr_cat(c->xstr, "\n", 1));
+
 finish:
+  iwxstr_destroy(xstr);
+  iwpool_destroy(pool);
   return rc;
 }
 

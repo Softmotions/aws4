@@ -8,11 +8,12 @@
 #define AWS_SERVICE_S3       0x02U
 
 struct aws4_request_sign_spec {
-  const char     *aws_key;
-  const char     *aws_secret_key;
-  const char     *aws_host;
-  const char     *aws_region;
-  uint32_t aws_service;
+  const char *aws_key;
+  const char *aws_secret_key;
+  const char *aws_host;
+  const char *aws_region;
+  const char *signed_headers; // `;` separated list of signed headers in lower case
+  uint32_t    aws_service;
 };
 
 iwrc aws4_request_sign(const struct aws4_request_sign_spec *spec, struct xcurlreq *req);
