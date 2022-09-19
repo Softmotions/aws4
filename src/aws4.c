@@ -18,7 +18,7 @@ struct _ctx {
   IWXSTR *xstr;
   IWXSTR *signed_headers;
   struct xcurlreq *req;
-  const struct aws4_request_sign_spec *spec;
+  const struct aws4_request_spec *spec;
   const char *service;
   char datetime[20]; ///< YYYYMMDD'T'HHMMSS'Z',
   char date[10];     ///< YYYYMMDD
@@ -408,7 +408,8 @@ static void _hmac(
   br_hmac_out(&hc, out_buf);
 }
 
-iwrc aws4_request_sign(const struct aws4_request_sign_spec *spec, struct xcurlreq *req) {
+iwrc aws4_request_sign(struct aws4_request_spec *spec) {
+  struct xcurlreq *req = &spec->xreq;
   if (!spec->aws_host) {
     iwlog_error2("Missing required spec->aws_host");
     return IW_ERROR_INVALID_ARGS;
@@ -499,4 +500,33 @@ finish:
   iwxstr_destroy(xstr2);
   iwxstr_destroy(c.signed_headers);
   return rc;
+}
+
+static struct aws4_request_spec* _set_aws_key(struct aws4_request_spec *spec, const char *key) {
+  
+  return spec;
+}
+
+iwrc aws4_request_create(struct aws4_request_spec **out_spec) {
+  *out_spec = 0;
+  IWPOOL *pool = iwpool_create_empty();
+  if (!pool) {
+    return iwrc_set_errno(IW_ERROR_ALLOC, errno);
+  }
+  struct aws4_request_spec *spec = *out_spec = iwpool_calloc(sizeof(**out_spec), pool);
+  if (!*out_spec) {
+    return iwrc_set_errno(IW_ERROR_ALLOC, errno);
+  }
+
+  /*
+  struct aws4_request_spec* (*set_aws_key)(struct aws4_request_spec *spec, const char *key);
+  struct aws4_request_spec* (*set_aws_secret_key)(struct aws4_request_spec *spec, const char *secret_key);
+  struct aws4_request_spec* (*set_aws_host)(struct aws4_request_spec *spec, const char *host);
+  struct aws4_request_spec* (*set_aws_region)(struct aws4_request_spec *spec, const char *region);
+  struct aws4_request_spec* (*set_signed_headers)(struct aws4_request_spec *spec, const char *headers);
+  struct aws4_request_spec* (*set_target)(struct aws4_request_spec *spec, const char *target);
+  */
+
+  
+  return 0;
 }
