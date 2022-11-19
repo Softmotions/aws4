@@ -14,17 +14,17 @@
 #include <string.h>
 #include <assert.h>
 
-struct _ctx {
+struct _sign_ctx {
   IWXSTR *xstr;
   IWXSTR *signed_headers;
-  struct xcurlreq *req;
-  const struct aws4_request_spec *spec;
+  struct xcurlreq *xreq;
+  const struct aws4_request *req;
   const char *service;
   char datetime[20]; ///< YYYYMMDD'T'HHMMSS'Z',
   char date[10];     ///< YYYYMMDD
 };
 
-static iwrc _ctx_init(struct _ctx *c) {
+static iwrc _sign_ctx_init(struct _sign_ctx *c) {
   iwrc rc = 0;
   time_t t;
 
@@ -50,7 +50,7 @@ static iwrc _ctx_init(struct _ctx *c) {
   bool user_agent_found = false;
 
   // Set host header
-  for (struct curl_slist *h = c->req->headers; h; h = h->next) {
+  for (struct curl_slist *h = c->xreq->headers; h; h = h->next) {
     if (strncasecmp(h->data, "host:", IW_LLEN("host:")) == 0) {
       host_found = true;
     } else if (strncasecmp(h->data, "accept:", IW_LLEN("accept:")) == 0) {
@@ -61,33 +61,33 @@ static iwrc _ctx_init(struct _ctx *c) {
   }
 
   if (!user_agent_found) {
-    xcurlreq_hdr_add(c->req, "user-agent", IW_LLEN("user-agent"), "aws4/1.0", IW_LLEN("aws4/1.0"));
+    xcurlreq_hdr_add(c->xreq, "user-agent", IW_LLEN("user-agent"), "aws4/1.0", IW_LLEN("aws4/1.0"));
   }
 
   if (!host_found) {
-    xcurlreq_hdr_add(c->req, "host", IW_LLEN("host"), c->spec->aws_host, -1);
+    xcurlreq_hdr_add(c->xreq, "host", IW_LLEN("host"), c->req->aws_host, -1);
   }
 
   if (!accept_found) {
-    xcurlreq_hdr_add(c->req, "accept", IW_LLEN("accept"), "*/*", IW_LLEN("*/*"));
+    xcurlreq_hdr_add(c->xreq, "accept", IW_LLEN("accept"), "*/*", IW_LLEN("*/*"));
   }
 
-  xcurlreq_hdr_add(c->req, "x-amz-date", IW_LLEN("x-amz-date"), c->datetime, -1);
+  xcurlreq_hdr_add(c->xreq, "x-amz-date", IW_LLEN("x-amz-date"), c->datetime, -1);
 
   return 0;
 }
 
-static iwrc _sr_method_add(struct _ctx *c) {
+static iwrc _sr_method_add(struct _sign_ctx *c) {
   const char *method = "GET";
-  if (c->req->flags & XCURLREQ_POST) {
+  if (c->xreq->flags & XCURLREQ_POST) {
     method = "POST";
-  } else if (c->req->flags & XCURLREQ_PUT) {
+  } else if (c->xreq->flags & XCURLREQ_PUT) {
     method = "PUT";
-  } else if (c->req->flags & XCURLREQ_DEL) {
+  } else if (c->xreq->flags & XCURLREQ_DEL) {
     method = "DELETE";
-  } else if (c->req->flags & XCURLREQ_HEAD) {
+  } else if (c->xreq->flags & XCURLREQ_HEAD) {
     method = "HEAD";
-  } else if (c->req->flags & XCURLREQ_OPTS) {
+  } else if (c->xreq->flags & XCURLREQ_OPTS) {
     method = "OPTIONS";
   }
   return iwxstr_printf(c->xstr, "%s\n", method);
@@ -114,8 +114,8 @@ static IW_ALLOC char* _sr_section_create(struct xcurlreq *req, const char *sp, c
   return _uri_encode(sp, ep - sp, rounds);
 }
 
-static iwrc _sr_uri_add(struct _ctx *c) {
-  const char *sp = c->req->path;
+static iwrc _sr_uri_add(struct _sign_ctx *c) {
+  const char *sp = c->xreq->path;
   const char *ep = sp;
   while (*ep) {
     while (*ep && *ep == '/') {
@@ -126,12 +126,12 @@ static iwrc _sr_uri_add(struct _ctx *c) {
       ++ep;
     }
     if (ep > sp) {
-      char *s = _sr_section_create(c->req, sp, ep);
+      char *s = _sr_section_create(c->xreq, sp, ep);
       if (!s) {
         return iwrc_set_errno(IW_ERROR_ALLOC, errno);
       }
       RCR(iwxstr_printf(c->xstr, "/%s", s));
-    } else if (sp == c->req->path) {
+    } else if (sp == c->xreq->path) {
       RCR(iwxstr_cat(c->xstr, "/", 1));
       break;
     }
@@ -158,8 +158,8 @@ static int _cr_qs_pair_compare(const void *a, const void *b) {
   return strncmp(p1->val, p2->val, p1->val_len);
 }
 
-static iwrc _sr_qs_add(struct _ctx *c) {
-  if (!c->req->_qxstr || iwxstr_size(c->req->_qxstr) == 0) {
+static iwrc _sr_qs_add(struct _sign_ctx *c) {
+  if (!c->xreq->_qxstr || iwxstr_size(c->xreq->_qxstr) == 0) {
     return iwxstr_cat(c->xstr, "\n", 1);
   }
   iwrc rc = 0;
@@ -169,10 +169,10 @@ static iwrc _sr_qs_add(struct _ctx *c) {
   char *buf = 0;
   size_t buflen = 0;
 
-  size_t len = iwxstr_size(c->req->_qxstr);
+  size_t len = iwxstr_size(c->xreq->_qxstr);
   RCB(finish, pool = iwpool_create_empty());
 
-  char *qs = iwpool_strndup2(pool, iwxstr_ptr(c->req->_qxstr), len);
+  char *qs = iwpool_strndup2(pool, iwxstr_ptr(c->xreq->_qxstr), len);
   RCB(finish, qs);
   RCC(rc, finish, iwn_wf_parse_query_inplace(pool, &pairs, qs, len));
 
@@ -290,19 +290,19 @@ static int _cr_header_pair_compare(const void *a, const void *b) {
   return strncmp(h1->key, h2->key, h1->key_len);
 }
 
-static iwrc _sr_headers_add(struct _ctx *c) {
+static iwrc _sr_headers_add(struct _sign_ctx *c) {
   iwrc rc = 0;
   IWPOOL *pool = 0;
   RCB(finish, pool = iwpool_create_empty());
   size_t len = 0;
-  for (struct curl_slist *h = c->req->headers; h; h = h->next) {
+  for (struct curl_slist *h = c->xreq->headers; h; h = h->next) {
     ++len;
   }
   struct iwn_pair *harr;
   RCB(finish, harr = iwpool_alloc(sizeof(harr[0]) * len, pool));
 
   len = 0;
-  for (struct curl_slist *h = c->req->headers; h; h = h->next) {
+  for (struct curl_slist *h = c->xreq->headers; h; h = h->next) {
     RCC(rc, finish, _cr_header_fill(pool, h->data, &harr[len++]));
   }
 
@@ -326,7 +326,7 @@ static int _sr_header_compare(const void *a, const void *b) {
   return strcmp(p1, p2);
 }
 
-static iwrc _sr_headers_signed_add(struct _ctx *c) {
+static iwrc _sr_headers_signed_add(struct _sign_ctx *c) {
   iwrc rc = 0;
   int cnt = 0;
   IWPOOL *pool = 0;
@@ -334,9 +334,9 @@ static iwrc _sr_headers_signed_add(struct _ctx *c) {
 
   RCB(finish, pool = iwpool_create_empty());
   RCB(finish, xstr = iwxstr_new_printf("content-type;host;x-amz-date"));
-  if (c->spec->signed_headers) {
+  if (c->req->signed_headers) {
     RCC(rc, finish, iwxstr_cat(xstr, ";", 1));
-    RCC(rc, finish, iwxstr_cat2(xstr, c->spec->signed_headers));
+    RCC(rc, finish, iwxstr_cat2(xstr, c->req->signed_headers));
   }
 
   const char **tokens = iwpool_split_string(pool, iwxstr_ptr(xstr), ";", true);
@@ -364,15 +364,15 @@ finish:
   return rc;
 }
 
-static iwrc _sr_payload_hash_add(struct _ctx *c) {
-  if (c->req->payload_len == 0) {
+static iwrc _sr_payload_hash_add(struct _sign_ctx *c) {
+  if (c->xreq->payload_len == 0) {
     return iwxstr_cat(c->xstr, "\n", 1);
   }
   char hash[br_sha256_SIZE * 2 + 1];
   uint8_t hash_bits[br_sha256_SIZE];
   br_sha256_context ctx;
   br_sha256_init(&ctx);
-  br_sha256_update(&ctx, c->req->payload, c->req->payload_len);
+  br_sha256_update(&ctx, c->xreq->payload, c->xreq->payload_len);
   br_sha256_out(&ctx, hash_bits);
   iwbin2hex(hash, sizeof(hash), hash_bits, sizeof(hash_bits));
   RCR(iwxstr_cat(c->xstr, hash, sizeof(hash) - 1));
@@ -408,24 +408,12 @@ static void _hmac(
   br_hmac_out(&hc, out_buf);
 }
 
-iwrc aws4_request_sign(struct aws4_request_spec *spec) {
-  struct xcurlreq *req = &spec->xreq;
-  if (!spec->aws_host) {
-    iwlog_error2("Missing required spec->aws_host");
-    return IW_ERROR_INVALID_ARGS;
+iwrc aws4_request_sign(struct aws4_request *req) {
+  if (req->status & AWS_REQUEST_SIGNED) {
+    return IW_ERROR_INVALID_STATE;
   }
-  if (!spec->aws_region) {
-    iwlog_error2("Missing required spec->aws_region");
-    return IW_ERROR_INVALID_ARGS;
-  }
-  if (!spec->aws_key) {
-    iwlog_error2("Missing required spec->aws_key");
-    return IW_ERROR_INVALID_ARGS;
-  }
-  if (!spec->aws_secret_key) {
-    iwlog_error2("Missing required spec->aws_secret_key");
-    return IW_ERROR_INVALID_ARGS;
-  }
+
+  struct xcurlreq *xreq = &req->xreq;
 
   iwrc rc = 0;
   char hash[br_sha256_SIZE];
@@ -435,13 +423,13 @@ iwrc aws4_request_sign(struct aws4_request_spec *spec) {
   RCB(finish, xstr);
   RCB(finish, xstr2 = iwxstr_new());
 
-  struct _ctx c = {
+  struct _sign_ctx c = {
+    .xreq = xreq,
     .req  = req,
-    .spec = spec,
     .xstr = xstr
   };
 
-  switch (spec->aws_service) {
+  switch (req->aws_service) {
     case AWS_SERVICE_S3:
       c.service = "s3";
       break;
@@ -454,7 +442,7 @@ iwrc aws4_request_sign(struct aws4_request_spec *spec) {
       goto finish;
   }
 
-  RCC(rc, finish, _ctx_init(&c));
+  RCC(rc, finish, _sign_ctx_init(&c));
   RCC(rc, finish, _sr_method_add(&c));
   RCC(rc, finish, _sr_uri_add(&c));
   RCC(rc, finish, _sr_qs_add(&c));
@@ -469,15 +457,15 @@ iwrc aws4_request_sign(struct aws4_request_spec *spec) {
   iwxstr_clear(xstr2);
   RCC(rc, finish, iwxstr_cat(xstr2, "AWS4-HMAC-SHA256\n", IW_LLEN("AWS4-HMAC-SHA256\n")));
   RCC(rc, finish, iwxstr_printf(xstr2, "%s\n", c.datetime));
-  RCC(rc, finish, iwxstr_printf(xstr2, "%s/%s/%s/aws4_request\n", c.date, spec->aws_region, c.service));
+  RCC(rc, finish, iwxstr_printf(xstr2, "%s/%s/%s/aws4_request\n", c.date, req->aws_region, c.service));
   RCC(rc, finish, iwxstr_cat(xstr2, hashx, br_sha256_SIZE * 2));
 
   // Calculate signing key
   iwxstr_clear(xstr);
   RCC(rc, finish, iwxstr_cat(xstr, "AWS4", IW_LLEN("AWS4")));
-  RCC(rc, finish, iwxstr_cat(xstr, spec->aws_secret_key, strlen(spec->aws_secret_key)));
+  RCC(rc, finish, iwxstr_cat(xstr, req->aws_secret_key, strlen(req->aws_secret_key)));
   _hmac(iwxstr_ptr(xstr), iwxstr_size(xstr), c.date, -1, hash);
-  _hmac(hash, br_sha256_SIZE, spec->aws_region, -1, hash);
+  _hmac(hash, br_sha256_SIZE, req->aws_region, -1, hash);
   _hmac(hash, br_sha256_SIZE, c.service, -1, hash);
   _hmac(hash, br_sha256_SIZE, "aws4_request", IW_LLEN("aws4_request"), hash);
 
@@ -490,10 +478,10 @@ iwrc aws4_request_sign(struct aws4_request_spec *spec) {
   iwxstr_clear(xstr);
   RCC(rc, finish,
       iwxstr_printf(xstr, "AWS-HMAC-SHA256 Credential=%s/%s/%s/%s/aws4_request, SignedHeaders=%s, Signature=%s",
-                    spec->aws_key, c.date, spec->aws_region, c.service,
+                    req->aws_key, c.date, req->aws_region, c.service,
                     iwxstr_ptr(c.signed_headers), iwxstr_ptr(xstr2)));
 
-  xcurlreq_hdr_add(req, "Authorization", IW_LLEN("Authorization"), iwxstr_ptr(xstr), iwxstr_size(xstr));
+  xcurlreq_hdr_add(xreq, "Authorization", IW_LLEN("Authorization"), iwxstr_ptr(xstr), iwxstr_size(xstr));
 
 finish:
   iwxstr_destroy(xstr);
@@ -502,31 +490,80 @@ finish:
   return rc;
 }
 
-static struct aws4_request_spec* _set_aws_key(struct aws4_request_spec *spec, const char *key) {
-  
-  return spec;
+void aws4_request_destroy(struct aws4_request **reqp) {
+  if (!reqp || !*reqp) {
+    return;
+  }
+  struct aws4_request *req = *reqp;
+  *reqp = 0;
+  xcurlreq_destroy_keep(&req->xreq);
+  if (req->xreq.payload) {
+    free((void*) req->xreq.payload);
+  }
+  iwpool_destroy(req->pool);
 }
 
-iwrc aws4_request_create(struct aws4_request_spec **out_spec) {
-  *out_spec = 0;
+iwrc aws4_request_create(
+  const char           *aws_host,
+  const char           *aws_region,
+  const char           *aws_key,
+  const char           *aws_secret_key,
+  struct aws4_request **out_req
+  ) {
+  if (!out_req) {
+    return IW_ERROR_INVALID_ARGS;
+  }
+
+  *out_req = 0;
+
+  if (!aws_host) {
+    iwlog_error2("Missing required aws_host");
+    return IW_ERROR_INVALID_ARGS;
+  }
+  if (!aws_region) {
+    iwlog_error2("Missing required aws_region");
+    return IW_ERROR_INVALID_ARGS;
+  }
+  if (!aws_key) {
+    iwlog_error2("Missing required aws_key");
+    return IW_ERROR_INVALID_ARGS;
+  }
+  if (!aws_secret_key) {
+    iwlog_error2("Missing required aws_secret_key");
+    return IW_ERROR_INVALID_ARGS;
+  }
+
   IWPOOL *pool = iwpool_create_empty();
   if (!pool) {
     return iwrc_set_errno(IW_ERROR_ALLOC, errno);
   }
-  struct aws4_request_spec *spec = *out_spec = iwpool_calloc(sizeof(**out_spec), pool);
-  if (!*out_spec) {
+  struct aws4_request *req = *out_req = iwpool_calloc(sizeof(**out_req), pool);
+  if (!*out_req) {
     return iwrc_set_errno(IW_ERROR_ALLOC, errno);
   }
+  iwrc rc = 0;
+  req->pool = pool;
+  RCB(finish, req->aws_host = iwpool_strdup2(pool, aws_host));
+  RCB(finish, req->aws_region = iwpool_strdup2(pool, aws_region));
+  RCB(finish, req->aws_key = iwpool_strdup2(pool, aws_key));
+  RCB(finish, req->aws_secret_key = iwpool_strdup2(pool, aws_secret_key));
 
-  /*
-  struct aws4_request_spec* (*set_aws_key)(struct aws4_request_spec *spec, const char *key);
-  struct aws4_request_spec* (*set_aws_secret_key)(struct aws4_request_spec *spec, const char *secret_key);
-  struct aws4_request_spec* (*set_aws_host)(struct aws4_request_spec *spec, const char *host);
-  struct aws4_request_spec* (*set_aws_region)(struct aws4_request_spec *spec, const char *region);
-  struct aws4_request_spec* (*set_signed_headers)(struct aws4_request_spec *spec, const char *headers);
-  struct aws4_request_spec* (*set_target)(struct aws4_request_spec *spec, const char *target);
-  */
+finish:
+  if (rc) {
+    iwlog_ecode_error3(rc);
+    aws4_request_destroy(out_req);
+  }
+  return rc;
+}
 
-  
-  return 0;
+iwrc aws4_request_payload_set(struct aws4_request *req, const char *payload, size_t payload_len) {
+  if (req->xreq.payload) {
+    return IW_ERROR_INVALID_STATE;
+  }
+  iwrc rc = 0;
+  RCB(finish, req->xreq.payload = malloc(payload_len));
+  req->xreq.payload_len = payload_len;
+
+finish:
+  return rc;
 }

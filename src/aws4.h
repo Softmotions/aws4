@@ -2,14 +2,15 @@
 
 #include <iowow/basedefs.h>
 #include <iowow/iwpool.h>
-#include <iowow/iwjson.h>
 #include <iwnet/iwn_curl.h>
 #include <iwnet/iwn_pairs.h>
 
 #define AWS_SERVICE_DYNAMODB 0x01U
 #define AWS_SERVICE_S3       0x02U
 
-struct aws4_request_spec {
+#define AWS_REQUEST_SIGNED 0x01U
+
+struct aws4_request {
   const char *aws_key;
   const char *aws_secret_key;
   const char *aws_host;
@@ -17,21 +18,23 @@ struct aws4_request_spec {
   const char *signed_headers; // `;` separated list of signed headers in lower case
   const char *target;
 
-  JBL_NODE payload;
   struct xcurlreq xreq;
-  iwrc rc;
+  iwrc    rc;
+  IWPOOL *pool;
 
-  struct aws4_request_spec* (*set_aws_key)(struct aws4_request_spec *spec, const char *key);
-  struct aws4_request_spec* (*set_aws_secret_key)(struct aws4_request_spec *spec, const char *secret_key);
-  struct aws4_request_spec* (*set_aws_host)(struct aws4_request_spec *spec, const char *host);
-  struct aws4_request_spec* (*set_aws_region)(struct aws4_request_spec *spec, const char *region);
-  struct aws4_request_spec* (*set_signed_headers)(struct aws4_request_spec *spec, const char *headers);
-  struct aws4_request_spec* (*set_target)(struct aws4_request_spec *spec, const char *target);
-
-  IWPOOL  *pool;
   uint32_t aws_service;
+  uint32_t status;
 };
 
-iwrc aws4_request_create(struct aws4_request_spec **out_spec);
+iwrc aws4_request_create(
+  const char           *aws_host,
+  const char           *aws_region,
+  const char           *aws_key,
+  const char           *aws_secret_key,
+  struct aws4_request **out_req);
 
-iwrc aws4_request_sign(struct aws4_request_spec *spec);
+void aws4_request_destroy(struct aws4_request **reqp);
+
+iwrc aws4_request_payload_set(struct aws4_request *req, const char *payload, size_t payload_len);
+
+iwrc aws4_request_sign(struct aws4_request *req);
