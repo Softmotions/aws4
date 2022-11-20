@@ -3,6 +3,8 @@
 
 #include <iowow/iwlog.h>
 #include <iowow/iwconv.h>
+#include <iowow/iwarr.h>
+
 #include <iwnet/iwn_codec.h>
 #include <iwnet/bearssl_hash.h>
 #include <iwnet/bearssl_hmac.h>
@@ -13,13 +15,33 @@
 #include <stdlib.h>
 #include <string.h>
 #include <assert.h>
+#include <unistd.h>
+
+#define AWS_DNS_SUFFIX      "amazonaws.com"
+#define AWS_DYNAMODB_PREFIX "dynamodb"
+
+#define RETRY_PAUSE 3
+
+struct aws4_request {
+  const char     *aws_key;
+  const char     *aws_secret_key;
+  const char     *aws_region;
+  const char     *aws_url;
+  const char     *signed_headers; // `;` separated list of signed headers in lower case
+  const char     *service;
+  struct xcurlreq xreq;
+  struct iwn_url  url;
+  IWPOOL  *pool;
+  uint32_t aws_service;
+  uint32_t status;
+  bool     verbose;
+};
 
 struct _sign_ctx {
   IWXSTR *xstr;
   IWXSTR *signed_headers;
   struct xcurlreq *xreq;
   const struct aws4_request *req;
-  const char *service;
   char datetime[20]; ///< YYYYMMDD'T'HHMMSS'Z',
   char date[10];     ///< YYYYMMDD
 };
@@ -65,7 +87,7 @@ static iwrc _sign_ctx_init(struct _sign_ctx *c) {
   }
 
   if (!host_found) {
-    xcurlreq_hdr_add(c->xreq, "host", IW_LLEN("host"), c->req->aws_host, -1);
+    xcurlreq_hdr_add(c->xreq, "host", IW_LLEN("host"), c->req->url.host, -1);
   }
 
   if (!accept_found) {
@@ -408,11 +430,7 @@ static void _hmac(
   br_hmac_out(&hc, out_buf);
 }
 
-iwrc aws4_request_sign(struct aws4_request *req) {
-  if (req->status & AWS_REQUEST_SIGNED) {
-    return IW_ERROR_INVALID_STATE;
-  }
-
+static iwrc _sign(struct aws4_request *req) {
   struct xcurlreq *xreq = &req->xreq;
 
   iwrc rc = 0;
@@ -429,19 +447,6 @@ iwrc aws4_request_sign(struct aws4_request *req) {
     .xstr = xstr
   };
 
-  switch (req->aws_service) {
-    case AWS_SERVICE_S3:
-      c.service = "s3";
-      break;
-    case AWS_SERVICE_DYNAMODB:
-      c.service = "dynamodb";
-      break;
-    default:
-      iwlog_error("Invalid AWS service specidif");
-      rc = IW_ERROR_INVALID_ARGS;
-      goto finish;
-  }
-
   RCC(rc, finish, _sign_ctx_init(&c));
   RCC(rc, finish, _sr_method_add(&c));
   RCC(rc, finish, _sr_uri_add(&c));
@@ -457,7 +462,7 @@ iwrc aws4_request_sign(struct aws4_request *req) {
   iwxstr_clear(xstr2);
   RCC(rc, finish, iwxstr_cat(xstr2, "AWS4-HMAC-SHA256\n", IW_LLEN("AWS4-HMAC-SHA256\n")));
   RCC(rc, finish, iwxstr_printf(xstr2, "%s\n", c.datetime));
-  RCC(rc, finish, iwxstr_printf(xstr2, "%s/%s/%s/aws4_request\n", c.date, req->aws_region, c.service));
+  RCC(rc, finish, iwxstr_printf(xstr2, "%s/%s/%s/aws4_request\n", c.date, req->aws_region, req->service));
   RCC(rc, finish, iwxstr_cat(xstr2, hashx, br_sha256_SIZE * 2));
 
   // Calculate signing key
@@ -466,7 +471,7 @@ iwrc aws4_request_sign(struct aws4_request *req) {
   RCC(rc, finish, iwxstr_cat(xstr, req->aws_secret_key, strlen(req->aws_secret_key)));
   _hmac(iwxstr_ptr(xstr), iwxstr_size(xstr), c.date, -1, hash);
   _hmac(hash, br_sha256_SIZE, req->aws_region, -1, hash);
-  _hmac(hash, br_sha256_SIZE, c.service, -1, hash);
+  _hmac(hash, br_sha256_SIZE, req->service, -1, hash);
   _hmac(hash, br_sha256_SIZE, "aws4_request", IW_LLEN("aws4_request"), hash);
 
   // Calculate signature
@@ -478,7 +483,7 @@ iwrc aws4_request_sign(struct aws4_request *req) {
   iwxstr_clear(xstr);
   RCC(rc, finish,
       iwxstr_printf(xstr, "AWS-HMAC-SHA256 Credential=%s/%s/%s/%s/aws4_request, SignedHeaders=%s, Signature=%s",
-                    req->aws_key, c.date, req->aws_region, c.service,
+                    req->aws_key, c.date, req->aws_region, req->service,
                     iwxstr_ptr(c.signed_headers), iwxstr_ptr(xstr2)));
 
   xcurlreq_hdr_add(xreq, "Authorization", IW_LLEN("Authorization"), iwxstr_ptr(xstr), iwxstr_size(xstr));
@@ -503,32 +508,22 @@ void aws4_request_destroy(struct aws4_request **reqp) {
   iwpool_destroy(req->pool);
 }
 
-iwrc aws4_request_create(
-  const char           *aws_host,
-  const char           *aws_region,
-  const char           *aws_key,
-  const char           *aws_secret_key,
-  struct aws4_request **out_req
-  ) {
+iwrc aws4_request_create(const struct aws4_request_spec *spec, struct aws4_request **out_req) {
   if (!out_req) {
     return IW_ERROR_INVALID_ARGS;
   }
 
-  *out_req = 0;
+  out_req = 0;
 
-  if (!aws_host) {
-    iwlog_error2("Missing required aws_host");
-    return IW_ERROR_INVALID_ARGS;
-  }
-  if (!aws_region) {
+  if (!spec->aws_region) {
     iwlog_error2("Missing required aws_region");
     return IW_ERROR_INVALID_ARGS;
   }
-  if (!aws_key) {
+  if (!spec->aws_key) {
     iwlog_error2("Missing required aws_key");
     return IW_ERROR_INVALID_ARGS;
   }
-  if (!aws_secret_key) {
+  if (!spec->aws_secret_key) {
     iwlog_error2("Missing required aws_secret_key");
     return IW_ERROR_INVALID_ARGS;
   }
@@ -537,16 +532,47 @@ iwrc aws4_request_create(
   if (!pool) {
     return iwrc_set_errno(IW_ERROR_ALLOC, errno);
   }
+
   struct aws4_request *req = *out_req = iwpool_calloc(sizeof(**out_req), pool);
   if (!*out_req) {
+    iwpool_destroy(pool);
     return iwrc_set_errno(IW_ERROR_ALLOC, errno);
   }
+
   iwrc rc = 0;
   req->pool = pool;
-  RCB(finish, req->aws_host = iwpool_strdup2(pool, aws_host));
-  RCB(finish, req->aws_region = iwpool_strdup2(pool, aws_region));
-  RCB(finish, req->aws_key = iwpool_strdup2(pool, aws_key));
-  RCB(finish, req->aws_secret_key = iwpool_strdup2(pool, aws_secret_key));
+
+  switch (req->aws_service) {
+    case AWS_SERVICE_S3:
+      req->service = "s3";
+      break;
+    case AWS_SERVICE_DYNAMODB:
+      req->service = "dynamodb";
+      break;
+    default:
+      iwlog_error("Invalid AWS service specified");
+      rc = IW_ERROR_INVALID_ARGS;
+      goto finish;
+  }
+
+  RCB(finish, req->aws_region = iwpool_strdup2(pool, spec->aws_region));
+  RCB(finish, req->aws_key = iwpool_strdup2(pool, spec->aws_key));
+  RCB(finish, req->aws_secret_key = iwpool_strdup2(pool, spec->aws_secret_key));
+
+  {
+    req->aws_url = spec->aws_url ? iwpool_strdup2(pool, spec->aws_url) : 0;
+    if (!req->aws_url) {
+      RCB(finish,
+          req->aws_url = iwpool_printf(req->pool, "https://%s.%s.%s", req->service, req->aws_region, AWS_DNS_SUFFIX));
+    }
+    char *buf;
+    RCB(finish, buf = iwpool_strdup2(pool, req->aws_url));
+    if (iwn_url_parse(&req->url, buf)) {
+      iwlog_error("Failed to parse aws url: %s", req->aws_url);
+      rc = IW_ERROR_INVALID_ARGS;
+      goto finish;
+    }
+  }
 
 finish:
   if (rc) {
@@ -556,14 +582,138 @@ finish:
   return rc;
 }
 
-iwrc aws4_request_payload_set(struct aws4_request *req, const char *payload, size_t payload_len) {
+iwrc aws4_request_payload_set(struct aws4_request *req, const struct aws4_request_payload *payload) {
   if (req->xreq.payload) {
     return IW_ERROR_INVALID_STATE;
   }
   iwrc rc = 0;
-  RCB(finish, req->xreq.payload = malloc(payload_len));
-  req->xreq.payload_len = payload_len;
+  RCB(finish, req->xreq.payload = malloc(payload->data_len));
+  req->xreq.payload_len = payload->data_len;
+
+  const char *ctype = payload->content_type;
+  if (!ctype) {
+    ctype = "application/x-amz-json-1.0";
+  }
+  xcurlreq_hdr_add(&req->xreq, "content-type", IW_LLEN("content-type"), ctype, strlen(ctype));
+  if (payload->amz_target) {
+    xcurlreq_hdr_add(&req->xreq, "x-amz-target", IW_LLEN("x-amz-target"), payload->amz_target,
+                     strlen(payload->amz_target));
+    req->signed_headers = "x-amz-target";
+  }
+
+  req->xreq.flags = XCURLREQ_POST;
 
 finish:
+  return rc;
+}
+
+iwrc aws4_request_perform(CURL *curl, struct aws4_request *req, char **out) {
+  if (!curl || !req || !out || !req->aws_url) {
+    return IW_ERROR_INVALID_ARGS;
+  }
+  iwrc rc = 0;
+  CURLcode cc = 0;
+  IWXSTR *xstr;
+  struct xcurl_cursor dcur;
+  IWLIST resp_headers = { 0 };
+  long response_code = 0;
+
+  RCB(finish, xstr = iwxstr_new());
+  RCC(rc, finish, _sign(req));
+
+  curl_easy_reset(curl);
+
+  XCC(cc, finish, curl_easy_setopt(curl, CURLOPT_URL, req->aws_url));
+  XCC(cc, finish, curl_easy_setopt(curl, CURLOPT_WRITEFUNCTION, xcurl_body_write_xstr));
+  XCC(cc, finish, curl_easy_setopt(curl, CURLOPT_WRITEDATA, xstr));
+  XCC(cc, finish, curl_easy_setopt(curl, CURLOPT_HEADERFUNCTION, xcurl_hdr_write_iwlist));
+  XCC(cc, finish, curl_easy_setopt(curl, CURLOPT_HEADERDATA, &resp_headers));
+
+  if (req->xreq.headers) {
+    XCC(cc, finish, curl_easy_setopt(curl, CURLOPT_HTTPHEADER, req->xreq.headers));
+  }
+
+  if (req->xreq.payload_len) {
+    dcur.rp = req->xreq.payload;
+    dcur.end = req->xreq.payload + req->xreq.payload_len;
+    XCC(cc, finish, curl_easy_setopt(curl, CURLOPT_READFUNCTION, xcurl_read_cursor));
+    XCC(cc, finish, curl_easy_setopt(curl, CURLOPT_READDATA, &dcur));
+    XCC(cc, finish, curl_easy_setopt(curl, CURLOPT_INFILESIZE, dcur.end - dcur.rp));
+    XCC(cc, finish, curl_easy_setopt(curl, CURLOPT_POST, 1));
+  }
+
+  for (int retry = 0; retry < 3; ++retry) {
+    iwxstr_clear(xstr);
+    iwlist_destroy_keep(&resp_headers);
+
+    cc = curl_easy_perform(curl);
+    if (cc) {
+      iwlog_warn("AWS4 | HTTP request failed: %s %s%s",
+                 req->aws_url,
+                 curl_easy_strerror(cc),
+                 retry < 2 ? " retrying in 3 sec" : "");
+      if (retry < 2) {
+        sleep(RETRY_PAUSE);
+        continue;
+      }
+      XCC(cc, finish, cc);
+    }
+    curl_easy_getinfo(curl, CURLINFO_RESPONSE_CODE, &response_code);
+    if (!(response_code >= 200 && response_code < 300)) {
+      iwlog_warn("AWS4 | HTTP request failed. Response code: %ld %s", response_code, req->aws_url);
+      rc = IW_ERROR_FAIL;
+      goto finish;
+    }
+    break;
+  }
+
+finish:
+  if (rc) {
+    iwxstr_destroy(xstr);
+    *out = 0;
+  } else {
+    *out = iwxstr_destroy_keep_ptr(xstr);
+  }
+  iwlist_destroy_keep(&resp_headers);
+  return rc;
+}
+
+iwrc aws4_request(
+  CURL                              *curl,
+  const struct aws4_request_spec    *spec,
+  const struct aws4_request_payload *payload,
+  char                             **out
+  ) {
+  iwrc rc = 0;
+  struct aws4_request *req = 0;
+  if (out) {
+    *out = 0;
+  }
+  RCC(rc, finish, aws4_request_create(spec, &req));
+  if (payload) {
+    RCC(rc, finish, aws4_request_payload_set(req, payload));
+  }
+  rc = aws4_request_perform(curl, req, out);
+
+finish:
+  aws4_request_destroy(&req);
+  return rc;
+}
+
+iwrc aws4_request_json(
+  CURL                              *curl,
+  const struct aws4_request_spec    *spec,
+  const struct aws4_request_payload *payload,
+  IWPOOL                            *pool,
+  JBL_NODE                          *out
+  ) {
+  iwrc rc = 0;
+  char *out_buf = 0;
+
+  RCC(rc, finish, aws4_request(curl, spec, payload, &out_buf));
+  RCC(rc, finish, jbn_from_json(out_buf, out, pool));
+
+finish:
+  free(out_buf);
   return rc;
 }
