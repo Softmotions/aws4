@@ -1,0 +1,11 @@
+header name: Authorization : value: AWS4-HMAC-SHA256 Credential=fakeMyKeyId/20221122/us-east-1/dynamodb/aws4_request, SignedHeaders=content-
+type;host;x-amz-date;x-amz-target, Signature=9705e9f8cfd6e1d03a74791313c79181afd1fa094400fb275a2be3e6c844f096
+header name: X-Amz-Date : value: 20221122T211842Z
+header name: User-Agent : value: aws-cli/1.22.34 Python/3.10.6 Linux/6.0.6-76060006-generic botocore/1.23.34
+header name: Host : value: localhost:8000
+header name: Accept-Encoding : value: identity
+header name: Content-Length : value: 2
+header name: X-Amz-Target : value: DynamoDB_20120810.ListTables
+header name: Content-Type : value: application/x-amz-json-1.0
+request body: {}
+
