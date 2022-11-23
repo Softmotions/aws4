@@ -32,8 +32,7 @@ struct aws4_request {
   struct xcurlreq xreq;
   struct iwn_url  url;
   IWPOOL  *pool;
-  uint32_t aws_service;
-  uint32_t status;
+  unsigned aws_service;
   bool     verbose;
 };
 
@@ -69,6 +68,7 @@ static iwrc _sign_ctx_init(struct _sign_ctx *c) {
 
   bool host_found = false;
   bool accept_found = false;
+  bool accept_encoding_found = false;
   bool user_agent_found = false;
 
   // Set host header
@@ -92,6 +92,14 @@ static iwrc _sign_ctx_init(struct _sign_ctx *c) {
 
   if (!accept_found) {
     xcurlreq_hdr_add(c->xreq, "accept", IW_LLEN("accept"), "*/*", IW_LLEN("*/*"));
+  }
+
+  if (!accept_encoding_found) {
+    xcurlreq_hdr_add(c->xreq, "accept", IW_LLEN("accept"), "*/*", IW_LLEN("*/*"));
+  }
+
+  if (!accept_encoding_found) {
+    xcurlreq_hdr_add(c->xreq, "accept-encoding", IW_LLEN("accept-encoding"), "identity", IW_LLEN("identity"));
   }
 
   xcurlreq_hdr_add(c->xreq, "x-amz-date", IW_LLEN("x-amz-date"), c->datetime, -1);
@@ -139,7 +147,7 @@ static IW_ALLOC char* _sr_section_create(struct xcurlreq *req, const char *sp, c
 static iwrc _sr_uri_add(struct _sign_ctx *c) {
   const char *sp = c->xreq->path;
   const char *ep = sp;
-  while (*ep) {
+  while (ep && *ep) {
     while (*ep && *ep == '/') {
       ++sp;
       ++ep;
@@ -513,7 +521,7 @@ iwrc aws4_request_create(const struct aws4_request_spec *spec, struct aws4_reque
     return IW_ERROR_INVALID_ARGS;
   }
 
-  out_req = 0;
+  *out_req = 0;
 
   if (!spec->aws_region) {
     iwlog_error2("Missing required aws_region");
@@ -541,6 +549,7 @@ iwrc aws4_request_create(const struct aws4_request_spec *spec, struct aws4_reque
 
   iwrc rc = 0;
   req->pool = pool;
+  req->aws_service = spec->service;
 
   switch (req->aws_service) {
     case AWS_SERVICE_S3:

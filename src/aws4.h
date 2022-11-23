@@ -20,6 +20,7 @@ struct aws4_request_spec {
   const char *aws_key;
   const char *aws_secret_key;
   const char *aws_url;
+  unsigned    service;
   bool verbose;
 };
 
