@@ -95,10 +95,6 @@ static iwrc _sign_ctx_init(struct _sign_ctx *c) {
   }
 
   if (!accept_encoding_found) {
-    xcurlreq_hdr_add(c->xreq, "accept", IW_LLEN("accept"), "*/*", IW_LLEN("*/*"));
-  }
-
-  if (!accept_encoding_found) {
     xcurlreq_hdr_add(c->xreq, "accept-encoding", IW_LLEN("accept-encoding"), "identity", IW_LLEN("identity"));
   }
 
@@ -173,19 +169,21 @@ static iwrc _sr_uri_add(struct _sign_ctx *c) {
 static int _cr_qs_pair_compare(const void *a, const void *b) {
   const struct iwn_pair *p1 = *(struct iwn_pair**) a;
   const struct iwn_pair *p2 = *(struct iwn_pair**) b;
-  int ret = p1->key_len > p2->key_len ? 1 : p1->key_len < p2->key_len ? -1 : 0;
+
+  int ret = strncmp(p1->key, p2->key, MIN(p1->key_len, p2->key_len));
   if (ret) {
     return ret;
   }
-  ret = strncmp(p1->key, p2->key, p1->key_len);
+  ret = p1->key_len > p2->key_len ? 1 : p1->key_len < p2->key_len ? -1 : 0;
   if (ret) {
     return ret;
   }
-  ret = p1->val_len > p2->val_len ? 1 : p1->val_len < p2->val_len ? -1 : 0;
+
+  ret = strncmp(p1->val, p2->val, MIN(p1->val_len, p2->val_len));
   if (ret) {
     return ret;
   }
-  return strncmp(p1->val, p2->val, p1->val_len);
+  return p1->val_len > p2->val_len ? 1 : p1->val_len < p2->val_len ? -1 : 0;
 }
 
 static iwrc _sr_qs_add(struct _sign_ctx *c) {
@@ -313,11 +311,11 @@ static iwrc _cr_header_fill(IWPOOL *pool, const char *spec, struct iwn_pair *p) 
 static int _cr_header_pair_compare(const void *a, const void *b) {
   const struct iwn_pair *h1 = a;
   const struct iwn_pair *h2 = b;
-  int ret = h1->key_len > h2->key_len ? 1 : h1->key_len < h2->key_len ? -1 : 0;
+  int ret = strncmp(h1->key, h2->key, MIN(h1->key_len, h2->key_len));
   if (ret) {
     return ret;
   }
-  return strncmp(h1->key, h2->key, h1->key_len);
+  return h1->key_len > h2->key_len ? 1 : h1->key_len < h2->key_len ? -1 : 0;
 }
 
 static iwrc _sr_headers_add(struct _sign_ctx *c) {
@@ -370,7 +368,7 @@ static iwrc _sr_headers_signed_add(struct _sign_ctx *c) {
   }
 
   const char **tokens = iwpool_split_string(pool, iwxstr_ptr(xstr), ";", true);
-  for (const char **hh = tokens; hh; ++hh) {
+  for (const char **hh = tokens; *hh; ++hh) {
     ++cnt;
   }
 
