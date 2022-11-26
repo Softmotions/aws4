@@ -10,17 +10,19 @@
 
 #include <curl/curl.h>
 
-#define AWS_SERVICE_DYNAMODB 0x01U
-#define AWS_SERVICE_S3       0x02U
-
+#define AWS_SERVICE_DYNAMODB   0x01U
+#define AWS_SERVICE_S3         0x02U
+#define AWS_CREDENTIALS_LOCATE 0x04U ///< Locate AWS credetials accourding to
+                                     ///  https://docs.aws.amazon.com/sdkref/latest/guide/file-location.html
 struct aws4_request;
 
 struct aws4_request_spec {
-  const char *aws_region;
-  const char *aws_key;
-  const char *aws_secret_key;
-  const char *aws_url;
-  unsigned    service;
+  const char *aws_url;        ///< If not set a default URL will be provided as product of aws_region
+                              ///  and AWS_SERVICE flag.
+  const char *aws_region;     ///< Required.
+  const char *aws_key;        ///< Optional.
+  const char *aws_secret_key; ///< Optional.
+  unsigned    flags;          ///< AWS_SERVICE_XXX flag is required.
   bool verbose;
 };
 

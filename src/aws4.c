@@ -32,7 +32,7 @@ struct aws4_request {
   struct xcurlreq xreq;
   struct iwn_url  url;
   IWPOOL  *pool;
-  unsigned aws_service;
+  unsigned flags;
   bool     verbose;
 };
 
@@ -553,9 +553,9 @@ iwrc aws4_request_create(const struct aws4_request_spec *spec, struct aws4_reque
 
   iwrc rc = 0;
   req->pool = pool;
-  req->aws_service = spec->service;
+  req->flags = spec->flags;
 
-  switch (req->aws_service) {
+  switch (req->flags) {
     case AWS_SERVICE_S3:
       req->service = "s3";
       break;

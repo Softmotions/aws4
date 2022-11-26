@@ -59,7 +59,7 @@ static iwrc _aws4_test1(void) {
   CURL *curl = curl_easy_init();
 
   rc = aws4_request(curl, &(struct aws4_request_spec) {
-    .service = AWS_SERVICE_DYNAMODB,
+    .flags = AWS_SERVICE_DYNAMODB,
     .aws_region = "us-east-1",
     .aws_key = "fakeMyKeyId",
     .aws_secret_key = "fakeSecretAccessKey",
