@@ -3,6 +3,8 @@
 #include "aws4.h"
 
 #include <curl/curl.h>
+
+#include <iowow/iwp.h>
 #include <iwnet/iwn_tests.h>
 #include <iwnet/iwn_poller.h>
 #include <iwnet/iwn_proc.h>
@@ -63,10 +65,16 @@ static iwrc _aws4_test1(void) {
     .aws_secret_key = "fakeSecretAccessKey",
     .aws_url = "http://localhost:8000"
   }, &(struct aws4_request_payload) {
-    .data = "{}",
-    .data_len = IW_LLEN("{}"),
-    .amz_target = "DynamoDB_20120810.ListTables"
+    .payload = "{}",
+    .payload_len = IW_LLEN("{}"),
+    .amz_target = "DynamoDB_20120810.ListTables22"
   }, &out);
+
+  IWN_ASSERT(rc == 0);
+  IWN_ASSERT(out);
+  if (out) {
+    IWN_ASSERT(0 == strcmp(out, "{\"TableNames\":[]}"))
+  }
 
   free(out);
   curl_easy_cleanup(curl);
@@ -75,6 +83,7 @@ static iwrc _aws4_test1(void) {
 
 static void* _run_tests(void *d) {
   pthread_barrier_wait(&start_br);
+  iwp_sleep(500); // Wait a bit to setup local dynamodb endpoint
   iwrc rc = 0;
   RCC(rc, finish, _aws4_test1());
 

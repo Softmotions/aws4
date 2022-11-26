@@ -25,8 +25,8 @@ struct aws4_request_spec {
 };
 
 struct aws4_request_payload {
-  const char *data;
-  size_t      data_len;
+  const char *payload;
+  size_t      payload_len;
   const char *amz_target;
   const char *content_type;
 };

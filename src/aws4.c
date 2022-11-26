@@ -338,6 +338,8 @@ static iwrc _sr_headers_add(struct _sign_ctx *c) {
 
   for (size_t i = 0; i < len; ++i) {
     RCC(rc, finish, iwxstr_cat(c->xstr, harr[i].key, harr[i].key_len));
+    RCC(rc, finish, iwxstr_cat(c->xstr, ":", 1));
+    RCC(rc, finish, iwxstr_cat(c->xstr, harr[i].val, harr[i].val_len));
     RCC(rc, finish, iwxstr_cat(c->xstr, "\n", 1));
   }
 
@@ -361,6 +363,7 @@ static iwrc _sr_headers_signed_add(struct _sign_ctx *c) {
   IWXSTR *xstr = 0;
 
   RCB(finish, pool = iwpool_create_empty());
+  RCB(finish, c->signed_headers = iwxstr_new());
   RCB(finish, xstr = iwxstr_new_printf("content-type;host;x-amz-date"));
   if (c->req->signed_headers) {
     RCC(rc, finish, iwxstr_cat(xstr, ";", 1));
@@ -381,8 +384,10 @@ static iwrc _sr_headers_signed_add(struct _sign_ctx *c) {
     ph = *hh;
     if (hh != tokens) {
       RCC(rc, finish, iwxstr_cat(c->xstr, ";", 1));
+      RCC(rc, finish, iwxstr_cat(c->signed_headers, ";", 1));
     }
     RCC(rc, finish, iwxstr_cat2(c->xstr, *hh));
+    RCC(rc, finish, iwxstr_cat2(c->signed_headers, *hh));
   }
   RCC(rc, finish, iwxstr_cat(c->xstr, "\n", 1));
 
@@ -414,7 +419,7 @@ static void _sr_fill_request_hash(IWXSTR *xstr, char out[static br_sha256_SIZE *
   br_sha256_init(&ctx);
   br_sha256_update(&ctx, iwxstr_ptr(xstr), iwxstr_size(xstr));
   br_sha256_out(&ctx, hash_bits);
-  iwbin2hex(out, br_sha256_SIZE * 2, hash_bits, sizeof(hash_bits));
+  iwbin2hex(out, br_sha256_SIZE * 2 + 1, hash_bits, sizeof(hash_bits));
 }
 
 static void _hmac(
@@ -462,7 +467,6 @@ static iwrc _sign(struct aws4_request *req) {
   RCC(rc, finish, _sr_payload_hash_add(&c));
 
   _sr_fill_request_hash(xstr, hashx);
-  iwxstr_clear(xstr);
 
   // String to sign
   iwxstr_clear(xstr2);
@@ -482,6 +486,7 @@ static iwrc _sign(struct aws4_request *req) {
 
   // Calculate signature
   _hmac(hash, br_sha256_SIZE, iwxstr_ptr(xstr2), iwxstr_size(xstr2), hash);
+  iwbin2hex(hashx, sizeof(hashx), (unsigned char*) hash, sizeof(hash));
 
   // Add signature Authorization header.
   // Authorization: algorithm Credential=access key ID/credential scope,
@@ -490,7 +495,8 @@ static iwrc _sign(struct aws4_request *req) {
   RCC(rc, finish,
       iwxstr_printf(xstr, "AWS-HMAC-SHA256 Credential=%s/%s/%s/%s/aws4_request, SignedHeaders=%s, Signature=%s",
                     req->aws_key, c.date, req->aws_region, req->service,
-                    iwxstr_ptr(c.signed_headers), iwxstr_ptr(xstr2)));
+                    iwxstr_ptr(c.signed_headers), hashx));
+
 
   xcurlreq_hdr_add(xreq, "Authorization", IW_LLEN("Authorization"), iwxstr_ptr(xstr), iwxstr_size(xstr));
 
@@ -594,8 +600,14 @@ iwrc aws4_request_payload_set(struct aws4_request *req, const struct aws4_reques
     return IW_ERROR_INVALID_STATE;
   }
   iwrc rc = 0;
-  RCB(finish, req->xreq.payload = malloc(payload->data_len));
-  req->xreq.payload_len = payload->data_len;
+  char *buf;
+
+  RCB(finish, buf = malloc(payload->payload_len + 1));
+  memcpy(buf, payload->payload, payload->payload_len);
+  buf[payload->payload_len] = '\0';
+
+  req->xreq.payload = buf;
+  req->xreq.payload_len = payload->payload_len;
 
   const char *ctype = payload->content_type;
   if (!ctype) {
@@ -636,17 +648,19 @@ iwrc aws4_request_perform(CURL *curl, struct aws4_request *req, char **out) {
   XCC(cc, finish, curl_easy_setopt(curl, CURLOPT_HEADERFUNCTION, xcurl_hdr_write_iwlist));
   XCC(cc, finish, curl_easy_setopt(curl, CURLOPT_HEADERDATA, &resp_headers));
 
-  if (req->xreq.headers) {
-    XCC(cc, finish, curl_easy_setopt(curl, CURLOPT_HTTPHEADER, req->xreq.headers));
-  }
-
   if (req->xreq.payload_len) {
     dcur.rp = req->xreq.payload;
     dcur.end = req->xreq.payload + req->xreq.payload_len;
+    xcurlreq_hdr_add(&req->xreq, "Expect", IW_LLEN("Expect"), "", 0);
     XCC(cc, finish, curl_easy_setopt(curl, CURLOPT_READFUNCTION, xcurl_read_cursor));
     XCC(cc, finish, curl_easy_setopt(curl, CURLOPT_READDATA, &dcur));
     XCC(cc, finish, curl_easy_setopt(curl, CURLOPT_INFILESIZE, dcur.end - dcur.rp));
+    XCC(cc, finish, curl_easy_setopt(curl, CURLOPT_POSTFIELDSIZE, dcur.end - dcur.rp));
     XCC(cc, finish, curl_easy_setopt(curl, CURLOPT_POST, 1));
+  }
+
+  if (req->xreq.headers) {
+    XCC(cc, finish, curl_easy_setopt(curl, CURLOPT_HTTPHEADER, req->xreq.headers));
   }
 
   for (int retry = 0; retry < 3; ++retry) {
