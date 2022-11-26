@@ -67,7 +67,7 @@ static iwrc _aws4_test1(void) {
   }, &(struct aws4_request_payload) {
     .payload = "{}",
     .payload_len = IW_LLEN("{}"),
-    .amz_target = "DynamoDB_20120810.ListTables22"
+    .amz_target = "DynamoDB_20120810.ListTables"
   }, &out);
 
   IWN_ASSERT(rc == 0);
