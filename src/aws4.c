@@ -681,7 +681,7 @@ iwrc aws4_request_perform(CURL *curl, struct aws4_request *req, char **out) {
     }
     curl_easy_getinfo(curl, CURLINFO_RESPONSE_CODE, &response_code);
     if (!(response_code >= 200 && response_code < 300)) {
-      iwlog_warn("AWS4 | HTTP request failed. Response code: %ld %s", response_code, req->aws_url);
+      iwlog_warn("AWS4 | HTTP request failed. Response: %ld %s %s", response_code, req->aws_url, iwxstr_ptr(xstr));
       rc = IW_ERROR_FAIL;
       goto finish;
     }
