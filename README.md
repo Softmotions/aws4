@@ -1,9 +1,9 @@
-# AWS API HTTP client library written on pure C
+# AWS API HTTP client library written in pure C
 
 AWS4 is an low level client library used for signing and sending 
 to Amazon Webservices HTTP API. 
 
-## Perquisites
+## Prerequisites
 
 * libcurl with SSL enabled
 * gcc or clang C11 compiler (tested on clang v14 / gcc v11) 
@@ -21,6 +21,8 @@ make
 ## Example 
 
 ```c
+  // ListTables request to DynamoDB AWS service
+
   iwrc rc = 0;
   char *out = 0;
   CURL *curl = curl_easy_init();
