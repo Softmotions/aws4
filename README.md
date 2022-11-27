@@ -22,6 +22,7 @@ make
 
 ```c
   // ListTables request to DynamoDB AWS service
+  // Testcase code snippet
 
   iwrc rc = 0;
   char *out = 0;
