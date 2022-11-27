@@ -10,20 +10,19 @@
 
 #include <curl/curl.h>
 
-#define AWS_SERVICE_DYNAMODB   0x01U
-#define AWS_SERVICE_S3         0x02U
-#define AWS_CREDENTIALS_AUTO   0x04U ///< Locate AWS credetials accourding to
+#define AWS_SERVICE_DYNAMODB 0x01U   ///< DynamoDB accessed
+#define AWS_SERVICE_S3       0x02U   ///< AWS S3 accessed
+#define AWS_CREDENTIALS_AUTO 0x04U   ///< Locate AWS credetials accourding to
                                      ///  https://docs.aws.amazon.com/sdkref/latest/guide/file-location.html
 struct aws4_request;
 
 struct aws4_request_spec {
-  const char *aws_url;        ///< If not set a default URL will be provided as product of aws_region
-                              ///  and AWS_SERVICE flag.
+  const char *aws_url;        ///< If not set endpoint URL is computed as follows:
+                              ///  https://<service>.<aws_region>.amazonaws.com
   const char *aws_region;     ///< Required.
   const char *aws_key;        ///< Optional.
   const char *aws_secret_key; ///< Optional.
   unsigned    flags;          ///< AWS_SERVICE_XXX flag is required.
-  bool verbose;
 };
 
 struct aws4_request_payload {
@@ -32,16 +31,6 @@ struct aws4_request_payload {
   const char *amz_target;
   const char *content_type;
 };
-
-iwrc aws4_request_create(
-  const struct aws4_request_spec *spec,
-  struct aws4_request           **out_req);
-
-void aws4_request_destroy(struct aws4_request **reqp);
-
-iwrc aws4_request_payload_set(struct aws4_request *req, const struct aws4_request_payload *payload);
-
-iwrc aws4_request_perform(CURL *curl, struct aws4_request *req, char **out);
 
 iwrc aws4_request(
   CURL                              *curl,
@@ -55,3 +44,13 @@ iwrc aws4_request_json(
   const struct aws4_request_payload *payload,
   IWPOOL                            *pool,
   JBL_NODE                          *out);
+
+iwrc aws4_request_create(
+  const struct aws4_request_spec *spec,
+  struct aws4_request           **out_req);
+
+void aws4_request_destroy(struct aws4_request **reqp);
+
+iwrc aws4_request_payload_set(struct aws4_request *req, const struct aws4_request_payload *payload);
+
+iwrc aws4_request_perform(CURL *curl, struct aws4_request *req, char **out);

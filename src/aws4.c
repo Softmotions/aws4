@@ -4,6 +4,7 @@
 #include <iowow/iwlog.h>
 #include <iowow/iwconv.h>
 #include <iowow/iwarr.h>
+#include <iowow/iwini.h>
 
 #include <iwnet/iwn_codec.h>
 #include <iwnet/bearssl_hash.h>
@@ -518,6 +519,69 @@ void aws4_request_destroy(struct aws4_request **reqp) {
   iwpool_destroy(req->pool);
 }
 
+static int _creds_ini_handler(void *d, const char *section, const char *name, const char *value) {
+  struct aws4_request *req = d;
+  if (!section || !name) {
+    return 0;
+  }
+  if (value && strcmp("default", section) == 0) {
+    if (strcmp("aws_access_key_id", name) == 0 && !req->aws_key) {
+      req->aws_key = iwpool_strdup2(req->pool, value);
+    } else if (strcmp("aws_secret_access_key", name) == 0 && !req->aws_secret_key) {
+      req->aws_secret_key = iwpool_strdup2(req->pool, value);
+    }
+  }
+  return 1;
+}
+
+IW_INLINE bool _creds_try_load_file(struct aws4_request *req, const char *file) {
+  return file && iwini_parse(file, _creds_ini_handler, req) == 0;
+}
+
+static bool _creds_try_load_dir(struct aws4_request *req, const char *base) {
+  if (!base) {
+    return false;
+  }
+#ifndef _WIN32
+  IWXSTR *xstr = iwxstr_new_printf("%s/.aws/credentials", base);
+#else
+  IWXSTR *xstr = iwxstr_new_printf("%s\\.aws\\credentials", base);
+#endif
+  if (!xstr) {
+    return false;
+  }
+  bool ret = _creds_try_load_file(req, iwxstr_ptr(xstr));
+  iwxstr_destroy(xstr);
+  return ret;
+}
+
+static iwrc _creds_load(const struct aws4_request_spec *spec, struct aws4_request *req) {
+  iwrc rc = 0;
+  IWPOOL *pool = req->pool;
+  if (spec->aws_key) {
+    RCB(finish, req->aws_key = iwpool_strdup2(pool, spec->aws_key));
+  }
+  if (spec->aws_secret_key) {
+    RCB(finish, req->aws_secret_key = iwpool_strdup2(pool, spec->aws_secret_key));
+  }
+  if (!req->aws_secret_key || !req->aws_key) {
+    if (_creds_try_load_file(req, getenv("AWS_SHARED_CREDENTIALS_FILE"))) {
+      goto finish;
+    }
+    if (_creds_try_load_dir(req, getenv("HOME"))) {
+      goto finish;
+    }
+#ifdef _WIN32
+    if (_creds_try_load_file(req, getenv("USERPROFILE"))) {
+      goto finish;
+    }
+#endif
+  }
+
+finish:
+  return rc;
+}
+
 iwrc aws4_request_create(const struct aws4_request_spec *spec, struct aws4_request **out_req) {
   if (!out_req) {
     return IW_ERROR_INVALID_ARGS;
@@ -527,14 +591,6 @@ iwrc aws4_request_create(const struct aws4_request_spec *spec, struct aws4_reque
 
   if (!spec->aws_region) {
     iwlog_error2("Missing required aws_region");
-    return IW_ERROR_INVALID_ARGS;
-  }
-  if (!spec->aws_key) {
-    iwlog_error2("Missing required aws_key");
-    return IW_ERROR_INVALID_ARGS;
-  }
-  if (!spec->aws_secret_key) {
-    iwlog_error2("Missing required aws_secret_key");
     return IW_ERROR_INVALID_ARGS;
   }
 
@@ -553,6 +609,20 @@ iwrc aws4_request_create(const struct aws4_request_spec *spec, struct aws4_reque
   req->pool = pool;
   req->flags = spec->flags;
 
+  RCC(rc, finish, _creds_load(spec, req));
+
+  if (!req->aws_key) {
+    iwlog_error2("Missing aws_key");
+    rc = IW_ERROR_INVALID_ARGS;
+    goto finish;
+  }
+
+  if (!req->aws_secret_key) {
+    iwlog_error2("Missing aws_secret_key");
+    rc = IW_ERROR_INVALID_ARGS;
+    goto finish;
+  }
+
   switch (req->flags) {
     case AWS_SERVICE_S3:
       req->service = "s3";
@@ -567,8 +637,6 @@ iwrc aws4_request_create(const struct aws4_request_spec *spec, struct aws4_reque
   }
 
   RCB(finish, req->aws_region = iwpool_strdup2(pool, spec->aws_region));
-  RCB(finish, req->aws_key = iwpool_strdup2(pool, spec->aws_key));
-  RCB(finish, req->aws_secret_key = iwpool_strdup2(pool, spec->aws_secret_key));
 
   {
     req->aws_url = spec->aws_url ? iwpool_strdup2(pool, spec->aws_url) : 0;

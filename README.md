@@ -7,7 +7,7 @@ to Amazon Webservices HTTP API.
 
 * libcurl with SSL enabled
 * gcc or clang C11 compiler (tested on clang v14 / gcc v11) 
-* cmake v3.18+ make or ninja
+* cmake v3.18+, make or ninja
 
 ## Building
 
