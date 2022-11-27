@@ -46,7 +46,6 @@ struct _sign_ctx {
 };
 
 static iwrc _sign_ctx_init(struct _sign_ctx *c) {
-  iwrc rc = 0;
   time_t t;
 
   t = time(0);
@@ -99,7 +98,6 @@ static iwrc _sign_ctx_init(struct _sign_ctx *c) {
   }
 
   xcurlreq_hdr_add(c->xreq, "x-amz-date", IW_LLEN("x-amz-date"), c->datetime, -1);
-
   return 0;
 }
 

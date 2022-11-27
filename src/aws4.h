@@ -12,7 +12,7 @@
 
 #define AWS_SERVICE_DYNAMODB   0x01U
 #define AWS_SERVICE_S3         0x02U
-#define AWS_CREDENTIALS_LOCATE 0x04U ///< Locate AWS credetials accourding to
+#define AWS_CREDENTIALS_AUTO   0x04U ///< Locate AWS credetials accourding to
                                      ///  https://docs.aws.amazon.com/sdkref/latest/guide/file-location.html
 struct aws4_request;
 
