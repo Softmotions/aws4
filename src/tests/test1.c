@@ -56,9 +56,8 @@ static iwrc _dynamodb_spawn(void) {
 static iwrc _aws4_test1(void) {
   iwrc rc = 0;
   char *out = 0;
-  CURL *curl = curl_easy_init();
 
-  rc = aws4_request(curl, &(struct aws4_request_spec) {
+  rc = aws4_request(&(struct aws4_request_spec) {
     .flags = AWS_SERVICE_DYNAMODB,
     .aws_region = "us-east-1",
     .aws_key = "fakeMyKeyId",
@@ -77,7 +76,6 @@ static iwrc _aws4_test1(void) {
   }
 
   free(out);
-  curl_easy_cleanup(curl);
   return rc;
 }
 

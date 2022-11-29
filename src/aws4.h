@@ -33,13 +33,11 @@ struct aws4_request_payload {
 };
 
 iwrc aws4_request(
-  CURL                              *curl,
   const struct aws4_request_spec    *spec,
   const struct aws4_request_payload *payload,
   char                             **out);
 
 iwrc aws4_request_json(
-  CURL                              *curl,
   const struct aws4_request_spec    *spec,
   const struct aws4_request_payload *payload,
   IWPOOL                            *pool,

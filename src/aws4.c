@@ -766,7 +766,6 @@ finish:
 }
 
 iwrc aws4_request(
-  CURL                              *curl,
   const struct aws4_request_spec    *spec,
   const struct aws4_request_payload *payload,
   char                             **out
@@ -776,6 +775,11 @@ iwrc aws4_request(
   if (out) {
     *out = 0;
   }
+  CURL *curl = curl_easy_init();
+  if (!curl) {
+    return IW_ERROR_FAIL;
+  }
+
   RCC(rc, finish, aws4_request_create(spec, &req));
   if (payload) {
     RCC(rc, finish, aws4_request_payload_set(req, payload));
@@ -784,11 +788,11 @@ iwrc aws4_request(
 
 finish:
   aws4_request_destroy(&req);
+  curl_easy_cleanup(curl);
   return rc;
 }
 
 iwrc aws4_request_json(
-  CURL                              *curl,
   const struct aws4_request_spec    *spec,
   const struct aws4_request_payload *payload,
   IWPOOL                            *pool,
@@ -797,7 +801,7 @@ iwrc aws4_request_json(
   iwrc rc = 0;
   char *out_buf = 0;
 
-  RCC(rc, finish, aws4_request(curl, spec, payload, &out_buf));
+  RCC(rc, finish, aws4_request(spec, payload, &out_buf));
   RCC(rc, finish, jbn_from_json(out_buf, out, pool));
 
 finish:
