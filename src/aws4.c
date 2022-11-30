@@ -23,6 +23,17 @@
 
 #define RETRY_PAUSE 3
 
+static const char* _ecodefn(locale_t, uint32_t);
+
+IW_INLINE iwrc _init(void) {
+  static bool _initialized;
+  if (__sync_bool_compare_and_swap(&_initialized, false, true)) {
+    RCR(iw_init());
+    RCR(iwlog_register_ecodefn(_ecodefn));
+  }
+  return 0;
+}
+
 struct aws4_request {
   const char     *aws_key;
   const char     *aws_secret_key;
@@ -693,6 +704,7 @@ finish:
 }
 
 iwrc aws4_request_perform(CURL *curl, struct aws4_request *req, char **out) {
+  RCR(_init());
   if (!curl || !req || !out || !req->aws_url) {
     return IW_ERROR_INVALID_ARGS;
   }
@@ -748,7 +760,7 @@ iwrc aws4_request_perform(CURL *curl, struct aws4_request *req, char **out) {
     curl_easy_getinfo(curl, CURLINFO_RESPONSE_CODE, &response_code);
     if (!(response_code >= 200 && response_code < 300)) {
       iwlog_warn("AWS4 | HTTP request failed. Response: %ld %s %s", response_code, req->aws_url, iwxstr_ptr(xstr));
-      rc = IW_ERROR_FAIL;
+      rc = AWS4_API_REQUEST_ERROR;
       goto finish;
     }
     break;
@@ -807,4 +819,15 @@ iwrc aws4_request_json(
 finish:
   free(out_buf);
   return rc;
+}
+
+static const char* _ecodefn(locale_t locale, uint32_t ecode) {
+  if (ecode <= _AWS4_ERROR_START || ecode >= _AWS4_ERROR_END) {
+    return 0;
+  }
+  switch (ecode) {
+    case AWS4_API_REQUEST_ERROR:
+      return "Failed to call AWS HTTP API endpoint (AWS4_API_REQUEST_ERROR)";
+  }
+  return 0;
 }

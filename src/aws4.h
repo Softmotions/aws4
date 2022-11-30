@@ -14,6 +14,12 @@
 #define AWS_SERVICE_S3       0x02U   ///< AWS S3 accessed
 #define AWS_CREDENTIALS_AUTO 0x04U   ///< Locate AWS credetials accourding to
                                      ///  https://docs.aws.amazon.com/sdkref/latest/guide/file-location.html
+typedef enum {
+  _AWS4_ERROR_START = (IW_ERROR_START + 100000L),
+  AWS4_API_REQUEST_ERROR, ///< Failed to call AWS HTTP API endpoint (AWS4_API_REQUEST_ERROR)
+  _AWS4_ERROR_END,
+} aws4_ecode_e;
+
 struct aws4_request;
 
 struct aws4_request_spec {
