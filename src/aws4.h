@@ -48,17 +48,17 @@ iwrc aws4_request_raw(
   const struct aws4_request_payload *payload,
   char                             **out);
 
-iwrc aws4_request_json_get(
+iwrc aws4_request_raw_json_get(
   const struct aws4_request_spec    *spec,
   const struct aws4_request_payload *payload,
   IWPOOL                            *pool,
   JBL_NODE                          *out);
 
 iwrc aws4_request_json(
-  const struct aws4_request_spec   *spec,
+  const struct aws4_request_spec         *spec,
   const struct aws4_request_json_payload *payload,
-  IWPOOL                           *pool,
-  JBL_NODE                         *out);
+  IWPOOL                                 *pool,
+  JBL_NODE                               *out);
 
 iwrc aws4_request_create(
   const struct aws4_request_spec *spec,

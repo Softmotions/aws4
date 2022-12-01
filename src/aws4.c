@@ -838,7 +838,7 @@ finish:
   return rc;
 }
 
-iwrc aws4_request_json_get(
+iwrc aws4_request_raw_json_get(
   const struct aws4_request_spec    *spec,
   const struct aws4_request_payload *payload,
   IWPOOL                            *pool,
@@ -888,7 +888,7 @@ iwrc aws4_request_json(
     };
   }
 
-  rc = aws4_request_json_get(spec, json_payload ? &payload : 0, pool, out);
+  rc = aws4_request_raw_json_get(spec, json_payload ? &payload : 0, pool, out);
 
 finish:
   iwxstr_destroy(xstr);
