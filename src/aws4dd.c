@@ -37,6 +37,8 @@ struct aws4dd_table_create {
   struct iwn_pairs tags;  ///< Table tags.
   struct aws4dd_index_spec global_idx[20];
   struct aws4dd_index_spec local_idx[5];
+  long     read_capacity_units;
+  long     write_capacity_units;
   unsigned flags;
 };
 
@@ -77,11 +79,13 @@ iwrc aws4dd_table_create_op(
     return IW_ERROR_INVALID_ARGS;
   }
   RCR(_name_check(name));
+
   iwrc rc = 0;
   IWPOOL *pool = iwpool_create_empty();
   if (!pool) {
     return iwrc_set_errno(IW_ERROR_ALLOC, errno);
   }
+
   struct aws4dd_table_create *r;
   RCB(finish, r = iwpool_calloc(sizeof(*r), pool));
   RCB(finish, r->name = iwpool_strdup2(pool, name));
@@ -90,6 +94,7 @@ iwrc aws4dd_table_create_op(
     RCB(finish, r->sk = iwpool_strdup2(pool, sort_key));
   }
   r->pool = pool;
+
   *rp = r;
 
 finish:
@@ -103,6 +108,17 @@ finish:
 void aws4dd_table_flags_update(struct aws4dd_table_create *op, unsigned flags) {
   if (op) {
     op->flags |= flags;
+  }
+}
+
+void aws4dd_table_provisioned_throughtput(
+  struct aws4dd_table_create *op,
+  long                        read_capacity_units,
+  long                        write_capacity_units
+  ) {
+  if (op) {
+    op->read_capacity_units = read_capacity_units;
+    op->write_capacity_units = write_capacity_units;
   }
 }
 
@@ -184,19 +200,41 @@ finish:
   return rc;
 }
 
-struct aws4dd_response* aws4dd_table_create(const struct aws4_request_spec *req, struct aws4dd_table_create *op) {
-  _init();
-  if (!req || !op) {
+struct aws4dd_response* aws4dd_table_create(const struct aws4_request_spec *spec, struct aws4dd_table_create *op) {
+  iwrc rc = _init();
+  if (rc) {
+    iwlog_ecode_error3(rc);
     return 0;
   }
-  iwrc rc = 0;
-  struct aws4dd_response *resp = 0;
-  JBL_NODE n, n2, n3;
-  RCC(rc, finish, jbn_from_json("{}", &n, op->pool));
-  RCC(rc, finish, jbn_add_item_arr(n, "AttributeDefinitions", &n2, op->pool));
+
+  struct aws4dd_response *resp = iwpool_calloc(sizeof(*resp), op->pool);
+  if (!resp) {
+    iwlog_ecode_error3(iwrc_set_errno(IW_ERROR_ALLOC, errno));
+    return 0;
+  }
+
+  resp->pool = op->pool;
+  if (!op->pk) {
+    resp->rc = AWS4DD_ERROR_NO_PARTITION_KEY;
+    return resp;
+  }
 
   struct iwn_pair *pair = op->attrs.first;
   for ( ; pair; pair = pair->next) {
+    if (strcmp(pair->key, op->pk) == 0) {
+      break;
+    }
+  }
+  if (!pair) {
+    resp->rc = AWS4DD_ERROR_NO_PARTITION_KEY;
+    return resp;
+  }
+
+  JBL_NODE n, n2, n3, n4, n5;
+  RCC(rc, finish, jbn_from_json("{}", &n, op->pool));
+  RCC(rc, finish, jbn_add_item_arr(n, "AttributeDefinitions", &n2, op->pool));
+
+  for (pair = op->attrs.first; pair; pair = pair->next) {
     RCC(rc, finish, jbn_add_item_obj(n2, 0, &n3, op->pool));
     RCC(rc, finish, jbn_add_item_str(n3, "AttributeName", pair->key, pair->key_len, 0, op->pool));
     RCC(rc, finish, jbn_add_item_str(n3, "AttributeType", pair->val, pair->val_len, 0, op->pool));
@@ -214,11 +252,109 @@ struct aws4dd_response* aws4dd_table_create(const struct aws4_request_spec *req,
     }
   }
 
-  if (op->global_idx[0].name) {
-    RCC(rc, finish, jbn_add_item_arr(n, "GlobalSecondaryIndexes", &n2, op->pool));
-    //  TODO:
+  for (int t = 0; t < 2; ++t) {
+    int imax = 0;
+    struct aws4dd_index_spec *idx = 0;
+    if (t == 0) {
+      idx = op->global_idx;
+      imax = sizeof(op->global_idx) / sizeof(op->global_idx[0]);
+    } else {
+      idx = op->local_idx;
+      imax = sizeof(op->local_idx) / sizeof(op->local_idx[0]);
+    }
+    if (!idx->name) {
+      continue;
+    }
+
+    if (t == 0) {
+      RCC(rc, finish, jbn_add_item_arr(n, "GlobalSecondaryIndexes", &n2, op->pool));
+    } else {
+      RCC(rc, finish, jbn_add_item_arr(n, "LocalSecondaryIndexes", &n2, op->pool));
+    }
+
+    for (int i = 0; i < imax && idx->name; ++i, ++idx) {
+      RCC(rc, finish, jbn_add_item_obj(n2, 0, &n3, op->pool));
+      RCC(rc, finish, jbn_add_item_str(n3, "IndexName", idx->name, -1, 0, op->pool));
+      RCC(rc, finish, jbn_add_item_arr(n3, "KeySchema", &n4, op->pool));
+      RCC(rc, finish, jbn_add_item_obj(n4, 0, &n5, op->pool));
+      RCC(rc, finish, jbn_add_item_str(n5, "AttributeName", idx->pk, -1, 0, op->pool));
+      RCC(rc, finish, jbn_add_item_str(n5, "KeyType", "HASH", IW_LLEN("HASH"), 0, op->pool));
+
+      if (idx->sk) {
+        RCC(rc, finish, jbn_add_item_obj(n4, 0, &n5, op->pool));
+        RCC(rc, finish, jbn_add_item_str(n5, "AttributeName", idx->sk, -1, 0, op->pool));
+        RCC(rc, finish, jbn_add_item_str(n5, "KeyType", "RANGE", IW_LLEN("RANGE"), 0, op->pool));
+      }
+
+      if (idx->project_all) {
+        RCC(rc, finish, jbn_add_item_obj(n3, "Projection", &n4, op->pool));
+        RCC(rc, finish, jbn_add_item_str(n4, "ProjectionType", "ALL", IW_LLEN("ALL"), 0, op->pool));
+      } else if (idx->proj && idx->proj[0]) {
+        RCC(rc, finish, jbn_add_item_obj(n3, "Projection", &n4, op->pool));
+        RCC(rc, finish, jbn_add_item_str(n4, "ProjectionType", "INCLUDE", IW_LLEN("INCLUDE"), 0, op->pool));
+        RCC(rc, finish, jbn_add_item_arr(n4, "NonKeyAttributes", &n5, op->pool));
+        for (int i = 0; idx->proj[i]; ++i) {
+          RCC(rc, finish, jbn_add_item_str(n5, 0, idx->proj[i], -1, 0, op->pool));
+        }
+      }
+    }
   }
 
+  RCC(rc, finish, jbn_add_item_arr(n, "KeySchema", &n2, op->pool));
+  RCC(rc, finish, jbn_add_item_obj(n2, 0, &n3, op->pool));
+  RCC(rc, finish, jbn_add_item_str(n3, "AttributeName", op->pk, -1, 0, op->pool));
+  RCC(rc, finish, jbn_add_item_str(n3, "KeyType", "HASH", IW_LLEN("HASH"), 0, op->pool));
+
+  if (op->sk) {
+    RCC(rc, finish, jbn_add_item_obj(n2, 0, &n3, op->pool));
+    RCC(rc, finish, jbn_add_item_str(n3, "AttributeName", op->sk, -1, 0, op->pool));
+    RCC(rc, finish, jbn_add_item_str(n3, "KeyType", "RANGE", IW_LLEN("RANGE"), 0, op->pool));
+  }
+
+  if (op->flags & AWS4DD_TABLE_BILLING_PROVISIONED) {
+    RCC(rc, finish, jbn_add_item_obj(n, "ProvisionedThroughput", &n2, op->pool));
+    RCC(rc, finish, jbn_add_item_i64(n2, "ReadCapacityUnits", op->read_capacity_units, 0, op->pool));
+    RCC(rc, finish, jbn_add_item_i64(n2, "WriteCapacityUnits", op->write_capacity_units, 0, op->pool));
+  }
+
+  if (op->flags & (AWS4DD_TABLE_STREAM_KEYS_ONLY | AWS4DD_TABLE_STREAM_NEW_IMAGE | AWS4DD_TABLE_STREAM_OLD_IMAGE)) {
+    RCC(rc, finish, jbn_add_item_obj(n, "StreamSpecification", &n2, op->pool));
+    RCC(rc, finish, jbn_add_item_bool(n2, "Enabled", true, 0, op->pool));
+    if (op->flags & AWS4DD_TABLE_STREAM_KEYS_ONLY) {
+      RCC(rc, finish, jbn_add_item_str(n2, "StreamViewType", "KEYS_ONLY", IW_LLEN("KEYS_ONLY"), 0, op->pool));
+    } else if ((op->flags & (AWS4DD_TABLE_STREAM_NEW_IMAGE | AWS4DD_TABLE_STREAM_OLD_IMAGE)) ==
+               (AWS4DD_TABLE_STREAM_NEW_IMAGE | AWS4DD_TABLE_STREAM_OLD_IMAGE)) {
+      RCC(rc, finish,
+          jbn_add_item_str(n2, "StreamViewType", "NEW_AND_OLD_IMAGES", IW_LLEN("NEW_AND_OLD_IMAGES"), 0, op->pool));
+    } else if (op->flags & AWS4DD_TABLE_STREAM_NEW_IMAGE) {
+      RCC(rc, finish, jbn_add_item_str(n2, "StreamViewType", "NEW_IMAGE", IW_LLEN("NEW_IMAGE"), 0, op->pool));
+    } else if (op->flags & AWS4DD_TABLE_STREAM_OLD_IMAGE) {
+      RCC(rc, finish, jbn_add_item_str(n2, "StreamViewType", "OLD_IMAGE", IW_LLEN("OLD_IMAGE"), 0, op->pool));
+    }
+  }
+
+  if (op->flags & (AWS4DD_TABLE_CLASS_STANDARD | AWS4DD_TABLE_CLASS_INFREQUENT)) {
+    if (op->flags & AWS4DD_TABLE_CLASS_STANDARD) {
+      RCC(rc, finish, jbn_add_item_str(n, "TableClass", "STANDARD", IW_LLEN("STANDARD"), 0, op->pool));
+    } else if (op->flags & AWS4DD_TABLE_CLASS_INFREQUENT) {
+      RCC(rc, finish, jbn_add_item_str(n, "TableClass",
+                                       "STANDARD_INFREQUENT_ACCESS", IW_LLEN("STANDARD_INFREQUENT_ACCESS"), 0,
+                                       op->pool));
+    }
+  }
+
+  if (op->tags.first) {
+    RCC(rc, finish, jbn_add_item_arr(n, "Tags", &n2, op->pool));
+    for (pair = op->tags.first; pair; pair = pair->next) {
+      RCC(rc, finish, jbn_add_item_str(n2, "Key", pair->key, pair->key_len, 0, op->pool));
+      RCC(rc, finish, jbn_add_item_str(n2, "Valuw", pair->val, pair->val_len, 0, op->pool));
+    }
+  }
+
+  RCC(rc, finish, aws4_request_json(spec, &(struct aws4_request_json_payload) {
+    .json = n,
+    .amz_target = "DynamoDB_20120810.CreateTable"
+  }, op->pool, &resp->data));
 
 
 finish:
@@ -241,6 +377,8 @@ static const char* _ecodefn(locale_t locale, uint32_t ecode) {
       return "Invalid table/index/attr name (AWS4DD_ERROR_INVALID_ENTITY_NAME)";
     case AWS4DD_ERROR_MAX_IDX_LIMIT:
       return "Number of allowed table indexes exceeds limits (AWS4DD_ERROR_MAX_IDX_LIMIT)";
+    case AWS4DD_ERROR_NO_PARTITION_KEY:
+      return "No partition key specified (AWS4DD_ERROR_NO_PARTITION_KEY)";
   }
   return 0;
 }

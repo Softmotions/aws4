@@ -594,6 +594,7 @@ finish:
 }
 
 iwrc aws4_request_create(const struct aws4_request_spec *spec, struct aws4_request **out_req) {
+  RCR(_init());
   if (!out_req) {
     return IW_ERROR_INVALID_ARGS;
   }
@@ -673,9 +674,11 @@ finish:
 }
 
 iwrc aws4_request_payload_set(struct aws4_request *req, const struct aws4_request_payload *payload) {
+  RCR(_init());
   if (req->xreq.payload) {
     return IW_ERROR_INVALID_STATE;
   }
+
   iwrc rc = 0;
   char *buf;
 
@@ -703,11 +706,37 @@ finish:
   return rc;
 }
 
+iwrc aws4_request_payload_json_set(struct aws4_request *req, const char *amz_target, const JBL_NODE json) {
+  RCR(_init());
+  if (!req || !json) {
+    return IW_ERROR_INVALID_ARGS;
+  }
+
+  IWXSTR *xstr = iwxstr_new();
+  if (!xstr) {
+    return iwrc_set_errno(IW_ERROR_ALLOC, errno);
+  }
+
+  iwrc rc = jbn_as_json(json, jbl_xstr_json_printer, xstr, 0);
+  if (!rc) {
+    rc = aws4_request_payload_set(req, &(struct aws4_request_payload) {
+      .payload = iwxstr_ptr(xstr),
+      .payload_len = iwxstr_size(xstr),
+      .content_type = "application/x-amz-json-1.0",
+      .amz_target = amz_target,
+    });
+  }
+
+  iwxstr_destroy(xstr);
+  return rc;
+}
+
 iwrc aws4_request_perform(CURL *curl, struct aws4_request *req, char **out) {
   RCR(_init());
   if (!curl || !req || !out || !req->aws_url) {
     return IW_ERROR_INVALID_ARGS;
   }
+
   iwrc rc = 0;
   CURLcode cc = 0;
   IWXSTR *xstr;
@@ -777,16 +806,21 @@ finish:
   return rc;
 }
 
-iwrc aws4_request(
+iwrc aws4_request_raw(
   const struct aws4_request_spec    *spec,
   const struct aws4_request_payload *payload,
   char                             **out
   ) {
+
+  RCR(_init());
+  if (!spec || !out) {
+    return IW_ERROR_INVALID_ARGS;
+  }
+
   iwrc rc = 0;
   struct aws4_request *req = 0;
-  if (out) {
-    *out = 0;
-  }
+  *out = 0;
+
   CURL *curl = curl_easy_init();
   if (!curl) {
     return IW_ERROR_FAIL;
@@ -804,20 +838,60 @@ finish:
   return rc;
 }
 
-iwrc aws4_request_json(
+iwrc aws4_request_json_get(
   const struct aws4_request_spec    *spec,
   const struct aws4_request_payload *payload,
   IWPOOL                            *pool,
   JBL_NODE                          *out
   ) {
+
+  RCR(_init());
+  if (!spec || !pool || !out) {
+    return IW_ERROR_INVALID_ARGS;
+  }
+
   iwrc rc = 0;
   char *out_buf = 0;
 
-  RCC(rc, finish, aws4_request(spec, payload, &out_buf));
+  RCC(rc, finish, aws4_request_raw(spec, payload, &out_buf));
   RCC(rc, finish, jbn_from_json(out_buf, out, pool));
 
 finish:
   free(out_buf);
+  return rc;
+}
+
+iwrc aws4_request_json(
+  const struct aws4_request_spec   *spec,
+  const struct aws4_request_json_payload *json_payload,
+  IWPOOL                           *pool,
+  JBL_NODE                         *out
+  ) {
+
+  RCR(_init());
+  if (!spec || !pool || !out || (json_payload && !json_payload->json)) {
+    return IW_ERROR_INVALID_ARGS;
+  }
+
+  iwrc rc = 0;
+  IWXSTR *xstr = 0;
+  struct aws4_request_payload payload;
+
+  if (json_payload) {
+    RCB(finish, xstr = iwxstr_new());
+    RCC(rc, finish, jbn_as_json(json_payload->json, jbl_xstr_json_printer, xstr, 0));
+    payload = (struct aws4_request_payload) {
+      .payload = iwxstr_ptr(xstr),
+      .payload_len = iwxstr_size(xstr),
+      .content_type = "application/x-amz-json-1.0",
+      .amz_target = json_payload->amz_target,
+    };
+  }
+
+  rc = aws4_request_json_get(spec, json_payload ? &payload : 0, pool, out);
+
+finish:
+  iwxstr_destroy(xstr);
   return rc;
 }
 

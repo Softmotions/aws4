@@ -38,16 +38,27 @@ struct aws4_request_payload {
   const char *content_type;
 };
 
-iwrc aws4_request(
+struct aws4_request_json_payload {
+  const char    *amz_target;
+  const JBL_NODE json;
+};
+
+iwrc aws4_request_raw(
   const struct aws4_request_spec    *spec,
   const struct aws4_request_payload *payload,
   char                             **out);
 
-iwrc aws4_request_json(
+iwrc aws4_request_json_get(
   const struct aws4_request_spec    *spec,
   const struct aws4_request_payload *payload,
   IWPOOL                            *pool,
   JBL_NODE                          *out);
+
+iwrc aws4_request_json(
+  const struct aws4_request_spec   *spec,
+  const struct aws4_request_json_payload *payload,
+  IWPOOL                           *pool,
+  JBL_NODE                         *out);
 
 iwrc aws4_request_create(
   const struct aws4_request_spec *spec,
@@ -56,5 +67,7 @@ iwrc aws4_request_create(
 void aws4_request_destroy(struct aws4_request **reqp);
 
 iwrc aws4_request_payload_set(struct aws4_request *req, const struct aws4_request_payload *payload);
+
+iwrc aws4_request_payload_json_set(struct aws4_request *req, const char *amz_target, const JBL_NODE json);
 
 iwrc aws4_request_perform(CURL *curl, struct aws4_request *req, char **out);
