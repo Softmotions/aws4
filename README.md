@@ -21,16 +21,15 @@ make
 ## Example 
 
 ```c
-  // ListTables request to DynamoDB AWS service
-  // Testcase code snippet
+ iwrc rc = 0;
+ char *out = 0;
 
-  iwrc rc = 0;
-  char *out = 0;
-  CURL *curl = curl_easy_init();
-
-  rc = aws4_request(curl, &(struct aws4_request_spec) {
-    .flags = AWS_SERVICE_DYNAMODB | AWS_CREDENTIALS_AUTO,
+  rc = aws4_request_raw(&(struct aws4_request_spec) {
+    .flags = AWS_SERVICE_DYNAMODB,
     .aws_region = "us-east-1",
+    .aws_key = "fakeMyKeyId",
+    .aws_secret_key = "fakeSecretAccessKey",
+    .aws_url = "http://localhost:8000"
   }, &(struct aws4_request_payload) {
     .payload = "{}",
     .payload_len = IW_LLEN("{}"),
@@ -38,12 +37,13 @@ make
   }, &out);
 
   IWN_ASSERT(rc == 0);
+  IWN_ASSERT(out);
+
   if (out) {
     IWN_ASSERT(0 == strcmp(out, "{\"TableNames\":[]}"))
   }
 
   free(out);
-  curl_easy_cleanup(curl);
-}
+  return rc;
 ```
 
