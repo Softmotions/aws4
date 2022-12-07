@@ -15,7 +15,7 @@
 #define AWS_CREDENTIALS_AUTO 0x04U   ///< Locate AWS credetials accourding to
                                      ///  https://docs.aws.amazon.com/sdkref/latest/guide/file-location.html
 #define AWS_REQUEST_VERBOSE 0x08U
-#define AWS_SERVICE_ALL (AWS_SERVICE_S3 | AWS_SERVICE_DYNAMODB)
+#define AWS_SERVICE_ALL     (AWS_SERVICE_S3 | AWS_SERVICE_DYNAMODB)
 
 
 typedef enum {
@@ -47,31 +47,31 @@ struct aws4_request_json_payload {
   const JBL_NODE json;
 };
 
-iwrc aws4_request_raw(
+IW_EXPORT iwrc aws4_request_raw(
   const struct aws4_request_spec    *spec,
   const struct aws4_request_payload *payload,
   char                             **out);
 
-iwrc aws4_request_raw_json_get(
+IW_EXPORT iwrc aws4_request_raw_json_get(
   const struct aws4_request_spec    *spec,
   const struct aws4_request_payload *payload,
   IWPOOL                            *pool,
   JBL_NODE                          *out);
 
-iwrc aws4_request_json(
+IW_EXPORT iwrc aws4_request_json(
   const struct aws4_request_spec         *spec,
   const struct aws4_request_json_payload *payload,
   IWPOOL                                 *pool,
   JBL_NODE                               *out);
 
-iwrc aws4_request_create(
+IW_EXPORT iwrc aws4_request_create(
   const struct aws4_request_spec *spec,
   struct aws4_request           **out_req);
 
-void aws4_request_destroy(struct aws4_request **reqp);
+IW_EXPORT void aws4_request_destroy(struct aws4_request **reqp);
 
-iwrc aws4_request_payload_set(struct aws4_request *req, const struct aws4_request_payload *payload);
+IW_EXPORT iwrc aws4_request_payload_set(struct aws4_request *req, const struct aws4_request_payload *payload);
 
-iwrc aws4_request_payload_json_set(struct aws4_request *req, const char *amz_target, const JBL_NODE json);
+IW_EXPORT iwrc aws4_request_payload_json_set(struct aws4_request *req, const char *amz_target, const JBL_NODE json);
 
-iwrc aws4_request_perform(CURL *curl, struct aws4_request *req, char **out);
+IW_EXPORT iwrc aws4_request_perform(CURL *curl, struct aws4_request *req, char **out);

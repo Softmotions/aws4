@@ -16,6 +16,13 @@ IW_INLINE iwrc _init(void) {
   return 0;
 }
 
+void aws4dd_response_destroy(struct aws4dd_response **rpp) {
+  if (rpp && *rpp) {
+    iwpool_destroy((*rpp)->pool);
+    *rpp = 0;
+  }
+}
+
 ///
 /// Table.
 ///
@@ -421,6 +428,72 @@ iwrc aws4dd_table_create(
   *rpp = resp;
 
 finish:
+  return rc;
+}
+
+iwrc aws4dd_table_describe(const struct aws4_request_spec *spec, const char *name, struct aws4dd_response **rpp) {
+  if (!spec || !rpp) {
+    return IW_ERROR_INVALID_ARGS;
+  }
+  *rpp = 0;
+  RCR(_name_check(name));
+  RCR(_init());
+  iwrc rc = 0;
+
+  IWPOOL *pool = iwpool_create_empty();
+  RCB(finish, pool);
+
+  struct aws4dd_response *resp = iwpool_calloc(sizeof(*resp), pool);
+  RCB(finish, resp);
+  resp->pool = pool;
+
+  JBL_NODE n;
+  RCC(rc, finish, jbn_from_json("{}", &n, pool));
+  RCC(rc, finish, jbn_add_item_str(n, "TableName", name, -1, 0, pool));
+  RCC(rc, finish, aws4_request_json(spec, &(struct aws4_request_json_payload) {
+    .json = n,
+    .amz_target = "DynamoDB_20120810.DescribeTable"
+  }, pool, &resp->data));
+
+  *rpp = resp;
+
+finish:
+  if (rc) {
+    iwpool_destroy(pool);
+  }
+  return rc;
+}
+
+iwrc aws4dd_table_delete(const struct aws4_request_spec *spec, const char *name, struct aws4dd_response **rpp) {
+  if (!spec || !rpp) {
+    return IW_ERROR_INVALID_ARGS;
+  }
+  *rpp = 0;
+  RCR(_name_check(name));
+  RCR(_init());
+  iwrc rc = 0;
+
+  IWPOOL *pool = iwpool_create_empty();
+  RCB(finish, pool);
+
+  struct aws4dd_response *resp = iwpool_calloc(sizeof(*resp), pool);
+  RCB(finish, resp);
+  resp->pool = pool;
+
+  JBL_NODE n;
+  RCC(rc, finish, jbn_from_json("{}", &n, pool));
+  RCC(rc, finish, jbn_add_item_str(n, "TableName", name, -1, 0, pool));
+  RCC(rc, finish, aws4_request_json(spec, &(struct aws4_request_json_payload) {
+    .json = n,
+    .amz_target = "DynamoDB_20120810.DeleteTable"
+  }, pool, &resp->data));
+
+  *rpp = resp;
+
+finish:
+  if (rc) {
+    iwpool_destroy(pool);
+  }
   return rc;
 }
 

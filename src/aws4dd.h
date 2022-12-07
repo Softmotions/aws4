@@ -14,9 +14,11 @@ typedef enum {
 
 
 struct aws4dd_response {
-  IWPOOL     *pool;
-  JBL_NODE    data;
+  IWPOOL  *pool;
+  JBL_NODE data;
 };
+
+IW_EXPORT void aws4dd_response_destroy(struct aws4dd_response **rpp);
 
 ///
 /// Table.
@@ -24,13 +26,13 @@ struct aws4dd_response {
 
 struct aws4dd_table_create;
 
-iwrc aws4dd_table_create_op(
+IW_EXPORT iwrc aws4dd_table_create_op(
   struct aws4dd_table_create **rp,
   const char                  *name,
   const char                  *pk,
   const char                  *sk);
 
-void aws4dd_table_create_op_destroy(struct aws4dd_table_create **rp);
+IW_EXPORT void aws4dd_table_create_op_destroy(struct aws4dd_table_create **opp);
 
 #define AWS4DD_TABLE_BILLING_PROVISIONED 0x01U
 #define AWS4DD_TABLE_BILLING_PER_REQUEST 0x02U
@@ -40,19 +42,19 @@ void aws4dd_table_create_op_destroy(struct aws4dd_table_create **rp);
 #define AWS4DD_TABLE_STREAM_NEW_IMAGE    0x20U
 #define AWS4DD_TABLE_STREAM_OLD_IMAGE    0x40U
 
-void aws4dd_table_flags_update(struct aws4dd_table_create *op, unsigned flags);
+IW_EXPORT void aws4dd_table_flags_update(struct aws4dd_table_create *op, unsigned flags);
 
-iwrc aws4dd_table_tag_add(struct aws4dd_table_create *op, const char *tag_name, const char *tag_value);
+IW_EXPORT iwrc aws4dd_table_tag_add(struct aws4dd_table_create *op, const char *tag_name, const char *tag_value);
 
-iwrc aws4dd_table_attribute_add(struct aws4dd_table_create *op, const char *spec);
+IW_EXPORT iwrc aws4dd_table_attribute_add(struct aws4dd_table_create *op, const char *spec);
 
-iwrc aws4dd_table_attribute_string_add(struct aws4dd_table_create *op, const char *name);
+IW_EXPORT iwrc aws4dd_table_attribute_string_add(struct aws4dd_table_create *op, const char *name);
 
-iwrc aws4dd_table_attribute_number_add(struct aws4dd_table_create *op, const char *name);
+IW_EXPORT iwrc aws4dd_table_attribute_number_add(struct aws4dd_table_create *op, const char *name);
 
-iwrc aws4dd_table_attribute_binary_add(struct aws4dd_table_create *op, const char *name);
+IW_EXPORT iwrc aws4dd_table_attribute_binary_add(struct aws4dd_table_create *op, const char *name);
 
-void aws4dd_table_provisioned_throughtput(
+IW_EXPORT void aws4dd_table_provisioned_throughtput(
   struct aws4dd_table_create *op,
   long                        read_capacity_units,
   long                        write_capacity_units);
@@ -66,13 +68,20 @@ struct aws4dd_index_spec {
   bool local;        ///< True if index is local
 };
 
-iwrc aws4dd_table_index_add(struct aws4dd_table_create *op, const struct aws4dd_index_spec *spec);
+IW_EXPORT iwrc aws4dd_table_index_add(struct aws4dd_table_create *op, const struct aws4dd_index_spec *spec);
 
-iwrc aws4dd_table_create(const struct aws4_request_spec *spec, struct aws4dd_table_create *op, struct aws4dd_response **rp);
+IW_EXPORT iwrc aws4dd_table_create(
+  const struct aws4_request_spec *spec,
+  struct aws4dd_table_create     *op,
+  struct aws4dd_response        **rp);
 
-struct aws4dd_response* aws4dd_table_describe(const struct aws4_request_spec *spec, const char *name);
+IW_EXPORT iwrc aws4dd_table_describe(
+  const struct aws4_request_spec *spec, const char *name,
+  struct aws4dd_response **rp);
 
-struct aws4dd_response* aws4dd_table_remove(const struct aws4_request_spec *spec, const char *name);
+IW_EXPORT iwrc aws4dd_table_delete(
+  const struct aws4_request_spec *spec, const char *name,
+  struct aws4dd_response **rpp);
 
 
 IW_EXTERN_C_END

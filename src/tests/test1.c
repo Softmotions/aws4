@@ -97,26 +97,27 @@ static iwrc _test_table_create(void) {
   RCC(rc, finish, aws4dd_table_tag_add(op, "Owner", "BlueTeam"));
 
   struct aws4dd_response *resp;
-
-  RCC(rc, finish, aws4dd_table_create(&(struct aws4_request_spec) {
-    .flags = AWS_SERVICE_DYNAMODB,
-    .aws_region = "us-east-1",
-    .aws_key = "fakeMyKeyId",
+  struct aws4_request_spec spec = {
+    .flags          = AWS_SERVICE_DYNAMODB,
+    .aws_region     = "us-east-1",
+    .aws_key        = "fakeMyKeyId",
     .aws_secret_key = "fakeSecretAccessKey",
-    .aws_url = "http://localhost:8000"
-  }, op, &resp));
+    .aws_url        = "http://localhost:8000"
+  };
 
-  IWN_ASSERT(rc == 0);
+  RCC(rc, finish, aws4dd_table_create(&spec, op, &resp));
+  IWN_ASSERT_FATAL(rc == 0);
+  IWN_ASSERT_FATAL(resp->data);
+  aws4dd_table_create_op_destroy(&op);
 
-  if (resp->data) {
-    IWXSTR *xstr = iwxstr_new();
-    jbn_as_json(resp->data, jbl_xstr_json_printer, xstr, JBL_PRINT_PRETTY);
-    fprintf(stderr, "%s\n", iwxstr_ptr(xstr));
-    iwxstr_destroy(xstr);
-  }
+  resp = 0;
+  RCC(rc, finish, aws4dd_table_describe(&spec, "Thread", &resp));
+  aws4dd_response_destroy(&resp);
+
+  RCC(rc, finish, aws4dd_table_delete(&spec, "Thread", &resp));
+  aws4dd_response_destroy(&resp);
 
 finish:
-  aws4dd_table_create_op_destroy(&op);
   return rc;
 }
 
