@@ -21,29 +21,29 @@ make
 ## Example 
 
 ```c
- iwrc rc = 0;
- char *out = 0;
+iwrc rc = 0;
+char *out = 0;
 
-  rc = aws4_request_raw(&(struct aws4_request_spec) {
-    .flags = AWS_SERVICE_DYNAMODB,
-    .aws_region = "us-east-1",
-    .aws_key = "fakeMyKeyId",
-    .aws_secret_key = "fakeSecretAccessKey",
-    .aws_url = "http://localhost:8000"
-  }, &(struct aws4_request_payload) {
-    .payload = "{}",
-    .payload_len = IW_LLEN("{}"),
-    .amz_target = "DynamoDB_20120810.ListTables"
-  }, &out);
+rc = aws4_request_raw(&(struct aws4_request_spec) {
+  .flags = AWS_SERVICE_DYNAMODB,
+  .aws_region = "us-east-1",
+  .aws_key = "fakeMyKeyId",
+  .aws_secret_key = "fakeSecretAccessKey",
+  .aws_url = "http://localhost:8000"
+}, &(struct aws4_request_payload) {
+  .payload = "{}",
+  .payload_len = IW_LLEN("{}"),
+  .amz_target = "DynamoDB_20120810.ListTables"
+}, &out);
 
-  IWN_ASSERT(rc == 0);
-  IWN_ASSERT(out);
+IWN_ASSERT(rc == 0);
+IWN_ASSERT(out);
 
-  if (out) {
-    IWN_ASSERT(0 == strcmp(out, "{\"TableNames\":[]}"))
-  }
+if (out) {
+  IWN_ASSERT(0 == strcmp(out, "{\"TableNames\":[]}"))
+}
 
-  free(out);
-  return rc;
+free(out);
+return rc;
 ```
 
