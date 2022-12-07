@@ -81,7 +81,7 @@ static iwrc _test_basic_comm(void) {
   return rc;
 }
 
-static iwrc _test_table_create(void) {
+static iwrc _test_table_create_describe_delete(void) {
   iwrc rc = 0;
   struct aws4dd_table_create *op = 0;
 
@@ -127,7 +127,7 @@ static void* _run_tests(void *d) {
   iwrc rc = 0;
 
   RCC(rc, finish, _test_basic_comm());
-  RCC(rc, finish, _test_table_create());
+  RCC(rc, finish, _test_table_create_describe_delete());
 
 finish:
   IWN_ASSERT(rc == 0);
