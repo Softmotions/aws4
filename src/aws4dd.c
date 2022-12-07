@@ -16,14 +16,6 @@ IW_INLINE iwrc _init(void) {
   return 0;
 }
 
-void aws4dd_response_destroy(struct aws4dd_response **rp) {
-  if (rp && *rp) {
-    struct aws4dd_response *r = *rp;
-    *rp = 0;
-    iwpool_destroy(r->pool);
-  }
-}
-
 ///
 /// Table.
 ///
@@ -86,15 +78,33 @@ iwrc aws4dd_table_create_op(
     return iwrc_set_errno(IW_ERROR_ALLOC, errno);
   }
 
+  char *pks = 0;
+  char *sks = 0;
+
   struct aws4dd_table_create *r;
   RCB(finish, r = iwpool_calloc(sizeof(*r), pool));
+  r->pool = pool;
   RCB(finish, r->name = iwpool_strdup2(pool, name));
   RCB(finish, r->pk = iwpool_strdup2(pool, partition_key));
+
+  pks = strchr(r->pk, ':');
   if (sort_key) {
     RCB(finish, r->sk = iwpool_strdup2(pool, sort_key));
+    sks = strchr(r->sk, ':');
   }
-  r->pool = pool;
 
+  if (pks) {
+    RCC(rc, finish, aws4dd_table_attribute_add(r, r->pk));
+    *pks = '\0'; // Trim up to ssemicolon
+  } else {
+    RCC(rc, finish, _name_check(r->pk));
+  }
+  if (sks) {
+    RCC(rc, finish, aws4dd_table_attribute_add(r, r->sk));
+    *sks = '\0';
+  } else {
+    RCC(rc, finish, _name_check(r->sk));
+  }
   *rp = r;
 
 finish:
@@ -103,6 +113,13 @@ finish:
     iwpool_destroy(pool);
   }
   return rc;
+}
+
+void aws4dd_table_create_op_destroy(struct aws4dd_table_create **rp) {
+  if (rp && *rp) {
+    iwpool_destroy((*rp)->pool);
+    *rp = 0;
+  }
 }
 
 void aws4dd_table_flags_update(struct aws4dd_table_create *op, unsigned flags) {
@@ -119,6 +136,7 @@ void aws4dd_table_provisioned_throughtput(
   if (op) {
     op->read_capacity_units = read_capacity_units;
     op->write_capacity_units = write_capacity_units;
+    op->flags = AWS4DD_TABLE_BILLING_PROVISIONED;
   }
 }
 
@@ -133,7 +151,7 @@ iwrc aws4dd_table_tag_add(struct aws4dd_table_create *op, const char *tag_name, 
 static iwrc _table_attribute_add(struct aws4dd_table_create *op, const char *name, const char *type) {
   RCR(_init());
   RCR(_name_check(name));
-  if (!op || type) {
+  if (!op || !type) {
     return IW_ERROR_INVALID_ARGS;
   }
   return iwn_pair_add_pool_all(op->pool, &op->attrs, name, -1, type, -1);
@@ -149,6 +167,41 @@ iwrc aws4dd_table_attribute_number_add(struct aws4dd_table_create *op, const cha
 
 iwrc aws4dd_table_attribute_binary_add(struct aws4dd_table_create *op, const char *name) {
   return _table_attribute_add(op, name, "B");
+}
+
+iwrc aws4dd_table_attribute_add(struct aws4dd_table_create *op, const char *spec) {
+  if (!op || !spec) {
+    return IW_ERROR_INVALID_ARGS;
+  }
+  char *sd = strdup(spec);
+  if (!sd) {
+    return iwrc_set_errno(IW_ERROR_ALLOC, errno);
+  }
+
+  char *colon = strchr(sd, ':');
+  if (!colon) {
+    free(sd);
+    return IW_ERROR_INVALID_ARGS;
+  }
+  *colon = '\0';
+  iwrc rc = 0;
+  switch (*(colon + 1)) {
+    case 'S':
+      rc = aws4dd_table_attribute_string_add(op, sd);
+      break;
+    case 'N':
+      rc = aws4dd_table_attribute_number_add(op, sd);
+      break;
+    case 'B':
+      rc = aws4dd_table_attribute_binary_add(op, sd);
+      break;
+    default:
+      rc = IW_ERROR_INVALID_ARGS;
+      break;
+  }
+
+  free(sd);
+  return rc;
 }
 
 iwrc aws4dd_table_index_add(struct aws4dd_table_create *op, const struct aws4dd_index_spec *spec) {
@@ -200,24 +253,28 @@ finish:
   return rc;
 }
 
-struct aws4dd_response* aws4dd_table_create(const struct aws4_request_spec *spec, struct aws4dd_table_create *op) {
-  iwrc rc = _init();
-  if (rc) {
-    iwlog_ecode_error3(rc);
-    return 0;
+iwrc aws4dd_table_create(
+  const struct aws4_request_spec *spec,
+  struct aws4dd_table_create     *op,
+  struct aws4dd_response        **rpp
+  ) {
+  if (!spec || !op || !rpp) {
+    return IW_ERROR_INVALID_ARGS;
+  }
+  *rpp = 0;
+  RCR(_init());
+  iwrc rc = 0;
+
+  if (!op->pk) {
+    return AWS4DD_ERROR_NO_PARTITION_KEY;
   }
 
   struct aws4dd_response *resp = iwpool_calloc(sizeof(*resp), op->pool);
   if (!resp) {
-    iwlog_ecode_error3(iwrc_set_errno(IW_ERROR_ALLOC, errno));
-    return 0;
+    return iwrc_set_errno(IW_ERROR_ALLOC, errno);
   }
 
   resp->pool = op->pool;
-  if (!op->pk) {
-    resp->rc = AWS4DD_ERROR_NO_PARTITION_KEY;
-    return resp;
-  }
 
   struct iwn_pair *pair = op->attrs.first;
   for ( ; pair; pair = pair->next) {
@@ -226,12 +283,13 @@ struct aws4dd_response* aws4dd_table_create(const struct aws4_request_spec *spec
     }
   }
   if (!pair) {
-    resp->rc = AWS4DD_ERROR_NO_PARTITION_KEY;
-    return resp;
+    rc = AWS4DD_ERROR_NO_PARTITION_KEY;
+    goto finish;
   }
 
   JBL_NODE n, n2, n3, n4, n5;
   RCC(rc, finish, jbn_from_json("{}", &n, op->pool));
+  RCC(rc, finish, jbn_add_item_str(n, "TableName", op->name, -1, 0, op->pool));
   RCC(rc, finish, jbn_add_item_arr(n, "AttributeDefinitions", &n2, op->pool));
 
   for (pair = op->attrs.first; pair; pair = pair->next) {
@@ -296,6 +354,9 @@ struct aws4dd_response* aws4dd_table_create(const struct aws4_request_spec *spec
         for (int i = 0; idx->proj[i]; ++i) {
           RCC(rc, finish, jbn_add_item_str(n5, 0, idx->proj[i], -1, 0, op->pool));
         }
+      } else {
+        RCC(rc, finish, jbn_add_item_obj(n3, "Projection", &n4, op->pool));
+        RCC(rc, finish, jbn_add_item_str(n4, "ProjectionType", "KEYS_ONLY", IW_LLEN("KEYS_ONLY"), 0, op->pool));
       }
     }
   }
@@ -346,8 +407,9 @@ struct aws4dd_response* aws4dd_table_create(const struct aws4_request_spec *spec
   if (op->tags.first) {
     RCC(rc, finish, jbn_add_item_arr(n, "Tags", &n2, op->pool));
     for (pair = op->tags.first; pair; pair = pair->next) {
-      RCC(rc, finish, jbn_add_item_str(n2, "Key", pair->key, pair->key_len, 0, op->pool));
-      RCC(rc, finish, jbn_add_item_str(n2, "Valuw", pair->val, pair->val_len, 0, op->pool));
+      RCC(rc, finish, jbn_add_item_obj(n2, 0, &n3, op->pool));
+      RCC(rc, finish, jbn_add_item_str(n3, "Key", pair->key, pair->key_len, 0, op->pool));
+      RCC(rc, finish, jbn_add_item_str(n3, "Valuw", pair->val, pair->val_len, 0, op->pool));
     }
   }
 
@@ -356,16 +418,10 @@ struct aws4dd_response* aws4dd_table_create(const struct aws4_request_spec *spec
     .amz_target = "DynamoDB_20120810.CreateTable"
   }, op->pool, &resp->data));
 
+  *rpp = resp;
 
 finish:
-  if (rc) {
-    if (resp && !resp->rc) {
-      resp->rc = rc;
-    } else {
-      iwlog_ecode_error3(rc);
-    }
-  }
-  return resp;
+  return rc;
 }
 
 static const char* _ecodefn(locale_t locale, uint32_t ecode) {

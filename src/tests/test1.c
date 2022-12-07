@@ -1,6 +1,7 @@
 #define _GNU_SOURCE
 
 #include "aws4.h"
+#include "aws4dd.h"
 
 #include <curl/curl.h>
 
@@ -53,7 +54,7 @@ static iwrc _dynamodb_spawn(void) {
   }, &dynamodb_pid);
 }
 
-static iwrc _aws4_test1(void) {
+static iwrc _test_basic_comm(void) {
   iwrc rc = 0;
   char *out = 0;
 
@@ -71,6 +72,7 @@ static iwrc _aws4_test1(void) {
 
   IWN_ASSERT(rc == 0);
   IWN_ASSERT(out);
+
   if (out) {
     IWN_ASSERT(0 == strcmp(out, "{\"TableNames\":[]}"))
   }
@@ -79,11 +81,52 @@ static iwrc _aws4_test1(void) {
   return rc;
 }
 
+static iwrc _test_table_create(void) {
+  iwrc rc = 0;
+  struct aws4dd_table_create *op = 0;
+
+  RCC(rc, finish, aws4dd_table_create_op(&op, "Thread", "ForumName:S", "Subject:S"));
+  RCC(rc, finish, aws4dd_table_attribute_string_add(op, "LastPostDateTime"));
+  RCC(rc, finish, aws4dd_table_index_add(op, &(struct aws4dd_index_spec) {
+    .local = true,
+    .name = "LastPostIndex",
+    .pk = "ForumName",
+    .sk = "LastPostDateTime",
+  }));
+  aws4dd_table_provisioned_throughtput(op, 5, 5);
+  RCC(rc, finish, aws4dd_table_tag_add(op, "Owner", "BlueTeam"));
+
+  struct aws4dd_response *resp;
+
+  RCC(rc, finish, aws4dd_table_create(&(struct aws4_request_spec) {
+    .flags = AWS_SERVICE_DYNAMODB,
+    .aws_region = "us-east-1",
+    .aws_key = "fakeMyKeyId",
+    .aws_secret_key = "fakeSecretAccessKey",
+    .aws_url = "http://localhost:8000"
+  }, op, &resp));
+
+  IWN_ASSERT(rc == 0);
+
+  if (resp->data) {
+    IWXSTR *xstr = iwxstr_new();
+    jbn_as_json(resp->data, jbl_xstr_json_printer, xstr, JBL_PRINT_PRETTY);
+    fprintf(stderr, "%s\n", iwxstr_ptr(xstr));
+    iwxstr_destroy(xstr);
+  }
+
+finish:
+  aws4dd_table_create_op_destroy(&op);
+  return rc;
+}
+
 static void* _run_tests(void *d) {
   pthread_barrier_wait(&start_br);
   iwp_sleep(500); // Wait a bit to setup local dynamodb endpoint
   iwrc rc = 0;
-  RCC(rc, finish, _aws4_test1());
+
+  RCC(rc, finish, _test_basic_comm());
+  RCC(rc, finish, _test_table_create());
 
 finish:
   IWN_ASSERT(rc == 0);

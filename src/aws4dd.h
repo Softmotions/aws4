@@ -16,11 +16,7 @@ typedef enum {
 struct aws4dd_response {
   IWPOOL     *pool;
   JBL_NODE    data;
-  const char *error;
-  iwrc rc;
 };
-
-void aws4dd_response_destroy(struct aws4dd_response **rp);
 
 ///
 /// Table.
@@ -34,6 +30,7 @@ iwrc aws4dd_table_create_op(
   const char                  *pk,
   const char                  *sk);
 
+void aws4dd_table_create_op_destroy(struct aws4dd_table_create **rp);
 
 #define AWS4DD_TABLE_BILLING_PROVISIONED 0x01U
 #define AWS4DD_TABLE_BILLING_PER_REQUEST 0x02U
@@ -46,6 +43,8 @@ iwrc aws4dd_table_create_op(
 void aws4dd_table_flags_update(struct aws4dd_table_create *op, unsigned flags);
 
 iwrc aws4dd_table_tag_add(struct aws4dd_table_create *op, const char *tag_name, const char *tag_value);
+
+iwrc aws4dd_table_attribute_add(struct aws4dd_table_create *op, const char *spec);
 
 iwrc aws4dd_table_attribute_string_add(struct aws4dd_table_create *op, const char *name);
 
@@ -69,7 +68,7 @@ struct aws4dd_index_spec {
 
 iwrc aws4dd_table_index_add(struct aws4dd_table_create *op, const struct aws4dd_index_spec *spec);
 
-struct aws4dd_response* aws4dd_table_create(const struct aws4_request_spec *spec, struct aws4dd_table_create *op);
+iwrc aws4dd_table_create(const struct aws4_request_spec *spec, struct aws4dd_table_create *op, struct aws4dd_response **rp);
 
 struct aws4dd_response* aws4dd_table_describe(const struct aws4_request_spec *spec, const char *name);
 

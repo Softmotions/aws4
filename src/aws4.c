@@ -635,7 +635,7 @@ iwrc aws4_request_create(const struct aws4_request_spec *spec, struct aws4_reque
     goto finish;
   }
 
-  switch (req->flags) {
+  switch (req->flags & AWS_SERVICE_ALL) {
     case AWS_SERVICE_S3:
       req->service = "s3";
       break;
@@ -811,7 +811,6 @@ iwrc aws4_request_raw(
   const struct aws4_request_payload *payload,
   char                             **out
   ) {
-
   RCR(_init());
   if (!spec || !out) {
     return IW_ERROR_INVALID_ARGS;
@@ -844,7 +843,6 @@ iwrc aws4_request_raw_json_get(
   IWPOOL                            *pool,
   JBL_NODE                          *out
   ) {
-
   RCR(_init());
   if (!spec || !pool || !out) {
     return IW_ERROR_INVALID_ARGS;
@@ -862,12 +860,11 @@ finish:
 }
 
 iwrc aws4_request_json(
-  const struct aws4_request_spec   *spec,
+  const struct aws4_request_spec         *spec,
   const struct aws4_request_json_payload *json_payload,
-  IWPOOL                           *pool,
-  JBL_NODE                         *out
+  IWPOOL                                 *pool,
+  JBL_NODE                               *out
   ) {
-
   RCR(_init());
   if (!spec || !pool || !out || (json_payload && !json_payload->json)) {
     return IW_ERROR_INVALID_ARGS;
@@ -876,10 +873,14 @@ iwrc aws4_request_json(
   iwrc rc = 0;
   IWXSTR *xstr = 0;
   struct aws4_request_payload payload;
+  bool verbose = spec->flags & AWS_REQUEST_VERBOSE;
 
   if (json_payload) {
     RCB(finish, xstr = iwxstr_new());
-    RCC(rc, finish, jbn_as_json(json_payload->json, jbl_xstr_json_printer, xstr, 0));
+    RCC(rc, finish, jbn_as_json(json_payload->json, jbl_xstr_json_printer, xstr, verbose ? JBL_PRINT_PRETTY : 0));
+    if (verbose) {
+      iwlog_info("aws4_request_json | payload: %s", iwxstr_ptr(xstr));
+    }
     payload = (struct aws4_request_payload) {
       .payload = iwxstr_ptr(xstr),
       .payload_len = iwxstr_size(xstr),

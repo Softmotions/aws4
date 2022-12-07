@@ -1,3 +1,4 @@
+.scratch.vim
 *.db
 .cache
 /build
