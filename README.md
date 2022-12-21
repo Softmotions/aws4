@@ -1,5 +1,7 @@
 # AWS API client library in pure C
 
+*Under active development*
+
 AWS4 is an low level client library used for signing and sending 
 to Amazon Webservices HTTP API. 
 
