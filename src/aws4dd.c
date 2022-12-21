@@ -497,6 +497,82 @@ finish:
   return rc;
 }
 
+//
+// Items
+//
+
+typedef enum {
+  AWS4DD_ITEM_VALUE_BOOL = 1,
+  AWS4DD_ITEM_VALUE_BS,
+  AWS4DD_ITEM_VALUE_L,
+  AWS4DD_ITEM_VALUE_M,
+  AWS4DD_ITEM_VALUE_N,
+  AWS4DD_ITEM_VALUE_NS,
+  AWS4DD_ITEM_VALUE_NULL,
+  AWS4DD_ITEM_VALUE_S,
+  AWS4DD_ITEM_VALUE_SS,
+} item_value_type_e;
+
+struct aws4dd_item_put {
+  IWPOOL *pool;
+  struct aws4dd_item_put_spec spec;
+};
+
+iwrc aws4dd_item_put_op(struct aws4dd_item_put **opp, const struct aws4dd_item_put_spec *spec) {
+  iwrc rc = 0;
+  if (!opp || !spec || !spec->table_name) {
+    return IW_ERROR_INVALID_ARGS;
+  }
+
+  IWPOOL *pool = iwpool_create_empty();
+  if (!pool) {
+    return iwrc_set_errno(IW_ERROR_ALLOC, errno);
+  }
+
+  struct aws4dd_item_put *op;
+  RCB(finish, op = iwpool_calloc(sizeof(*op), pool));
+  op->pool = pool;
+
+  RCB(finish, op->spec.table_name = iwpool_strdup2(pool, spec->table_name));
+  if (spec->cond_expression) {
+    RCB(finish, op->spec.cond_expression = iwpool_strdup2(pool, spec->cond_expression));
+  }
+  op->spec.return_values = spec->return_values;
+
+  *opp = op;
+
+finish:
+  if (rc) {
+    iwpool_destroy(pool);
+  }
+  return rc;
+}
+
+void awd4dd_item_put_op_destroy(struct aws4dd_item_put **opp) {
+  if (opp && *opp) {
+    iwpool_destroy((*opp)->pool);
+    *opp = 0;
+  }
+}
+
+///
+/// "foo", "/S", &"sval",
+/// "foo", "/S/var", 0,
+/// "foo", "/M/bar/S", &"sval"
+/// "foo", "/M/bar/M/S", &"sval"
+///
+
+iwrc aws4dd_item_put_attr(
+  struct aws4dd_item_put *op, const char *name, const char *path,
+  const char **vals
+  ) {
+  iwrc rc = 0;
+
+  // TODO:
+
+  return rc;
+}
+
 static const char* _ecodefn(locale_t locale, uint32_t ecode) {
   if (ecode <= _AWS4DD_ERROR_START || ecode >= _AWS4DD_ERROR_END) {
     return 0;

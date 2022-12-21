@@ -27,7 +27,7 @@ IW_EXPORT void aws4dd_response_destroy(struct aws4dd_response **rpp);
 struct aws4dd_table_create;
 
 IW_EXPORT iwrc aws4dd_table_create_op(
-  struct aws4dd_table_create **rp,
+  struct aws4dd_table_create **rpp,
   const char                  *name,
   const char                  *pk,
   const char                  *sk);
@@ -83,5 +83,48 @@ IW_EXPORT iwrc aws4dd_table_delete(
   const struct aws4_request_spec *spec, const char *name,
   struct aws4dd_response **rpp);
 
+//
+// Item
+//
+
+struct aws4dd_item_put;
+struct aws4dd_item_attr;
+
+typedef enum {
+  AWS4DD_RETURN_CONSUMED_NONE = 0,
+  AWS4DD_RETURN_CONSUMED_TOTAL,
+  AWS4DD_RETURN_CONSUMED_INDEXES,
+} aws4dd_return_consumed_capacity_e;
+
+typedef enum {
+  AWS4DD_RETURN_COLLECTION_NONE = 0,
+  AWS4DD_RETURN_COLLECTION_SIZE,
+} aws4dd_return_collection_metrics_e;
+
+typedef enum {
+  AWS4DD_RETURN_VALUES_NONE = 0,
+  AWS4DD_RETURN_VALUES_ALL_OLD,
+  AWS4DD_RETURN_VALUES_ALL_NEW,
+  AWS4DD_RETURN_VALUES_UPDATED_NEW,
+  AWS4DD_RETURN_VALUES_UPDATED_OLD,
+} aws4dd_return_values_e;
+
+struct aws4dd_item_put_spec {
+  const char *table_name;
+  const char *cond_expression;
+  struct {
+    aws4dd_return_values_e return_values;
+    aws4dd_return_consumed_capacity_e  capacity;
+    aws4dd_return_collection_metrics_e metrics;
+  } return_values;
+};
+
+IW_EXPORT iwrc aws4dd_item_put_op(struct aws4dd_item_put **opp, const struct aws4dd_item_put_spec *spec);
+
+IW_EXPORT void awd4dd_item_put_op_destroy(struct aws4dd_item_put **opp);
+
+IW_EXPORT iwrc aws4dd_item_put_attr(
+  struct aws4dd_item_put *op, const char *name, const char *path,
+  const char **vals);
 
 IW_EXTERN_C_END

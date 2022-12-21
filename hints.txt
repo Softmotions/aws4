@@ -1,3 +1,25 @@
+{
+  "Item": { 
+      "string" : { 
+         "B": blob,
+         "BOOL": boolean,
+         "BS": [ blob ],
+         "L": [ 
+            "AttributeValue"
+             {"S": "Cookies"}, {"S": "Coffee"}, {"N": "3.14159"}]
+         ],
+         "M": { 
+            "string" : "AttributeValue"
+         },
+         "N": "string",
+         "NS": [ "string" ],
+         "NULL": boolean,
+         "S": "string",
+         "SS": [ "string" ]
+      }
+  }
+}
+
 header name: Authorization : value: AWS4-HMAC-SHA256 Credential=fakeMyKeyId/20221122/us-east-1/dynamodb/aws4_request, SignedHeaders=content-
 type;host;x-amz-date;x-amz-target, Signature=9705e9f8cfd6e1d03a74791313c79181afd1fa094400fb275a2be3e6c844f096
 header name: X-Amz-Date : value: 20221122T211842Z
