@@ -517,9 +517,6 @@ struct aws4dd_item_put {
   IWPOOL *pool;
   struct aws4dd_item_put_spec spec;
   JBL_NODE n;                // JSON spec
-  JBL_NODE item;             // Item
-  JBL_NODE expr_attr_names;  // ExpressionAttributeNames
-  JBL_NODE expr_attr_values; // ExpressionAttributeValues
 };
 
 iwrc aws4dd_item_put_op(struct aws4dd_item_put **opp, const struct aws4dd_item_put_spec *spec) {
@@ -542,12 +539,7 @@ iwrc aws4dd_item_put_op(struct aws4dd_item_put **opp, const struct aws4dd_item_p
     RCB(finish, op->spec.cond_expression = iwpool_strdup2(pool, spec->cond_expression));
   }
   op->spec.return_values = spec->return_values;
-
   RCC(rc, finish, jbn_from_json("{}", &op->n, pool));
-  RCC(rc, finish, jbn_add_item_obj(op->n, "Item", &op->item, pool));
-  RCC(rc, finish, jbn_add_item_obj(op->n, "ExpressionAttributeNames", &op->item, pool));
-  RCC(rc, finish, jbn_add_item_obj(op->n, "ExpressionAttributeValues", &op->item, pool));
-
   *opp = op;
 
 finish:
@@ -620,15 +612,14 @@ finish:
 
 iwrc aws4dd_item_put_attr(
   struct aws4dd_item_put *op,
-  const char             *name,
   const char             *path,
   const char             *key,
   const char            **vals
   ) {
-  if (!op || !name || !path || !key || !vals) {
+  if (!op || !path || !key || !vals) {
     return IW_ERROR_INVALID_ARGS;
   }
-  return _item_put(op, op->item, path, key, vals);
+  return _item_put(op, op->n, path, key, vals);
 }
 
 static const char* _ecodefn(locale_t locale, uint32_t ecode) {
