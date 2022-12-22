@@ -516,6 +516,10 @@ typedef enum {
 struct aws4dd_item_put {
   IWPOOL *pool;
   struct aws4dd_item_put_spec spec;
+  JBL_NODE n;                // JSON spec
+  JBL_NODE item;             // Item
+  JBL_NODE expr_attr_names;  // ExpressionAttributeNames
+  JBL_NODE expr_attr_values; // ExpressionAttributeValues
 };
 
 iwrc aws4dd_item_put_op(struct aws4dd_item_put **opp, const struct aws4dd_item_put_spec *spec) {
@@ -539,6 +543,11 @@ iwrc aws4dd_item_put_op(struct aws4dd_item_put **opp, const struct aws4dd_item_p
   }
   op->spec.return_values = spec->return_values;
 
+  RCC(rc, finish, jbn_from_json("{}", &op->n, pool));
+  RCC(rc, finish, jbn_add_item_obj(op->n, "Item", &op->item, pool));
+  RCC(rc, finish, jbn_add_item_obj(op->n, "ExpressionAttributeNames", &op->item, pool));
+  RCC(rc, finish, jbn_add_item_obj(op->n, "ExpressionAttributeValues", &op->item, pool));
+
   *opp = op;
 
 finish:
@@ -555,22 +564,71 @@ void awd4dd_item_put_op_destroy(struct aws4dd_item_put **opp) {
   }
 }
 
+static iwrc _item_val(struct aws4dd_item_put *op, const char *key, const char **vals, JBL_NODE *out) {
+  iwrc rc = 0;
+  *out = 0;
+  JBL_NODE n = 0;
+
+  if (strcmp(key, "NULL") == 0 || strcmp(key, "BOOL") == 0) {
+    bool vbool = strcmp("true", *vals) == 0;
+    RCB(finish, n->vptr = iwpool_strdup2(op->pool, *vals));
+    n->type = JBV_BOOL;
+    n->vbool = vbool;
+  } else if (key[0] == 'L' || (strlen(key) == 2 && key[1] == 'S')) {
+    // Process vals as array
+    RCC(rc, finish, jbn_from_json("[]", &n, op->pool));
+    for (const char *v = *vals; *v != '\0'; ++vals) {
+      RCC(rc, finish, jbn_add_item_str(n, 0, v, -1, 0, op->pool));
+    }
+  } else {
+    // Process vals as simple string
+    RCB(finish, n->vptr = iwpool_strdup2(op->pool, *vals));
+    n->type = JBV_STR;
+    n->vsize = strlen(n->vptr);
+  }
+
+  RCB(finish, n->key = iwpool_strdup2(op->pool, key));
+
+  *out = n;
+
+finish:
+  return rc;
+}
+
 ///
 /// "foo", "/S", &"sval",
-/// "foo", "/S/var", 0,
 /// "foo", "/M/bar/S", &"sval"
 /// "foo", "/M/bar/M/S", &"sval"
 ///
-
-iwrc aws4dd_item_put_attr(
-  struct aws4dd_item_put *op, const char *name, const char *path,
+static iwrc _item_put(
+  struct aws4dd_item_put *op, JBL_NODE target, const char *path, const char *key,
   const char **vals
   ) {
   iwrc rc = 0;
+  JBL_NODE n;
+  JBL_PATCH p = { .path = path };
 
-  // TODO:
+  RCC(rc, finish, _item_val(op, key, vals, &n));
+  RCC(rc, finish, jbn_from_json("{}", &p.vnode, op->pool));
+  jbn_add_item(p.vnode, n);
 
+  //RCC(rc, finish, jbl_ptr_alloc(path, &ptr));
+
+finish:
   return rc;
+}
+
+iwrc aws4dd_item_put_attr(
+  struct aws4dd_item_put *op,
+  const char             *name,
+  const char             *path,
+  const char             *key,
+  const char            **vals
+  ) {
+  if (!op || !name || !path || !key || !vals) {
+    return IW_ERROR_INVALID_ARGS;
+  }
+  return _item_put(op, op->item, path, key, vals);
 }
 
 static const char* _ecodefn(locale_t locale, uint32_t ecode) {

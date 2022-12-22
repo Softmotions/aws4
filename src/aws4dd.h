@@ -124,7 +124,10 @@ IW_EXPORT iwrc aws4dd_item_put_op(struct aws4dd_item_put **opp, const struct aws
 IW_EXPORT void awd4dd_item_put_op_destroy(struct aws4dd_item_put **opp);
 
 IW_EXPORT iwrc aws4dd_item_put_attr(
-  struct aws4dd_item_put *op, const char *name, const char *path,
-  const char **vals);
+  struct aws4dd_item_put *op,
+  const char             *name,
+  const char             *path,
+  const char             *key,
+  const char            **vals);
 
 IW_EXTERN_C_END
