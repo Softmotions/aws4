@@ -121,6 +121,8 @@ struct aws4dd_item_put_spec {
 
 IW_EXPORT iwrc aws4dd_item_put_op(struct aws4dd_item_put **opp, const struct aws4dd_item_put_spec *spec);
 
+IW_EXPORT void aws4dd_item_put_op_destroy(struct aws4dd_item_put **opp);
+
 IW_EXPORT void awd4dd_item_put_op_destroy(struct aws4dd_item_put **opp);
 
 IW_EXPORT iwrc aws4dd_item_put_attr(
@@ -128,5 +130,13 @@ IW_EXPORT iwrc aws4dd_item_put_attr(
   const char             *path,
   const char             *key,
   const char            **vals);
+
+IW_EXPORT iwrc aws4dd_item_put_expression_attr_name(struct aws4dd_item_put *op, const char *key, const char *value);
+
+IW_EXPORT iwrc aws4dd_item_put(
+  const struct aws4_request_spec *spec,
+  struct aws4dd_item_put         *op,
+  struct aws4dd_response        **rpp);
+
 
 IW_EXTERN_C_END

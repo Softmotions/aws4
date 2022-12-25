@@ -519,6 +519,13 @@ struct aws4dd_item_put {
   JBL_NODE n;                // JSON spec
 };
 
+void aws4dd_item_put_op_destroy(struct aws4dd_item_put **opp) {
+  if (opp && *opp) {
+    iwpool_destroy((*opp)->pool);
+    *opp = 0;
+  }
+}
+
 iwrc aws4dd_item_put_op(struct aws4dd_item_put **opp, const struct aws4dd_item_put_spec *spec) {
   iwrc rc = 0;
   if (!opp || !spec || !spec->table_name) {
@@ -587,24 +594,19 @@ finish:
   return rc;
 }
 
-///
-/// "foo", "/S", &"sval",
-/// "foo", "/M/bar/S", &"sval"
-/// "foo", "/M/bar/M/S", &"sval"
-///
 static iwrc _item_put(
   struct aws4dd_item_put *op, JBL_NODE target, const char *path, const char *key,
   const char **vals
   ) {
   iwrc rc = 0;
   JBL_NODE n;
-  JBL_PATCH p = { .path = path };
+  JBL_PATCH p = { .path = path, .op = JBP_ADD_CREATE };
 
   RCC(rc, finish, _item_val(op, key, vals, &n));
   RCC(rc, finish, jbn_from_json("{}", &p.vnode, op->pool));
   jbn_add_item(p.vnode, n);
 
-  //RCC(rc, finish, jbl_ptr_alloc(path, &ptr));
+  RCC(rc, finish, jbn_patch(target, &p, 1, op->pool));
 
 finish:
   return rc;
@@ -620,6 +622,36 @@ iwrc aws4dd_item_put_attr(
     return IW_ERROR_INVALID_ARGS;
   }
   return _item_put(op, op->n, path, key, vals);
+}
+
+iwrc aws4dd_item_put_expression_attr_name(struct aws4dd_item_put *op, const char *key, const char *val) {
+  iwrc rc = 0;
+  JBL_NODE n, n2;
+
+  RCC(rc, finish, jbn_from_json("{}", &n, op->pool));
+  RCC(rc, finish, jbn_add_item_obj(n, "ExpressionAttributeNames", &n2, op->pool));
+  RCC(rc, finish, jbn_add_item_str(n2, key, val, -1, 0, op->pool));
+  RCC(rc, finish, jbn_patch_auto(op->n, n, op->pool));
+
+finish:
+  return rc;
+}
+
+iwrc aws4dd_item_put(
+  const struct aws4_request_spec *spec,
+  struct aws4dd_item_put         *op,
+  struct aws4dd_response        **rpp
+  ) {
+  if (!spec || !op || !rpp) {
+    return IW_ERROR_INVALID_ARGS;
+  }
+  *rpp = 0;
+  RCR(_init());
+  iwrc rc = 0;
+
+  // TODO:
+
+  return rc;
 }
 
 static const char* _ecodefn(locale_t locale, uint32_t ecode) {
