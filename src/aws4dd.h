@@ -12,7 +12,7 @@ typedef enum {
   _AWS4DD_ERROR_END,
 } aws4dd_ecode_e;
 
-
+/// Response of AWS4DD request.
 struct aws4dd_response {
   IWPOOL  *pool;
   JBL_NODE data;
@@ -21,7 +21,7 @@ struct aws4dd_response {
 IW_EXPORT void aws4dd_response_destroy(struct aws4dd_response **rpp);
 
 ///
-/// Table.
+/// Table
 ///
 
 struct aws4dd_table_create;
@@ -84,11 +84,10 @@ IW_EXPORT iwrc aws4dd_table_delete(
   struct aws4dd_response **rpp);
 
 //
-// Item
+// ItemPut
 //
 
 struct aws4dd_item_put;
-struct aws4dd_item_attr;
 
 typedef enum {
   AWS4DD_RETURN_CONSUMED_NONE = 0,
@@ -109,6 +108,7 @@ typedef enum {
   AWS4DD_RETURN_VALUES_UPDATED_OLD,
 } aws4dd_return_values_e;
 
+/// ItemPut operation specification.
 struct aws4dd_item_put_spec {
   const char *table_name;
   const char *condition_expression;
@@ -137,7 +137,11 @@ IW_EXPORT iwrc aws4dd_item_put_val(
   const char             *key,
   const char             *val);
 
-
+/// Add key-value pair to the given ExpressionAttributeNames part of ItemPut operation.
+/// @param op ItemPut operation
+/// @param key ExpressionAttributeNames key
+/// @param val ExpressionAttributeNames value
+///
 IW_EXPORT iwrc aws4dd_item_put_expression_attr_name(struct aws4dd_item_put *op, const char *key, const char *value);
 
 IW_EXPORT iwrc aws4dd_item_put(
@@ -145,5 +149,52 @@ IW_EXPORT iwrc aws4dd_item_put(
   struct aws4dd_item_put         *op,
   struct aws4dd_response        **rpp);
 
+//
+// ItemGet
+//
+
+struct aws4dd_item_get;
+
+/// ItemGet operation specification.
+struct aws4dd_item_get_spec {
+  const char *table_name;
+  const char *projection_expression;
+  aws4dd_return_consumed_capacity_e return_consumed_capacity;
+  bool consistent_read;
+};
+
+/// Create ItemGet operation.
+IW_EXPORT iwrc aws4dd_item_get_op(struct aws4dd_item_get **opp, const struct aws4dd_item_get_spec *spec);
+
+/// Destroy ItemGet operation.
+IW_EXPORT void aws4dd_item_get_op_destroy(struct aws4dd_item_get **opp);
+
+/// Adds key-value pair to the given ExpressionAttributeNames part of ItemGet operation.
+/// @param op ItemPut operation
+/// @param key ExpressionAttributeNames key
+/// @param val ExpressionAttributeNames value
+///
+IW_EXPORT iwrc aws4dd_item_get_expression_attr_name(struct aws4dd_item_get *op, const char *key, const char *value);
+
+
+/// Sets /Key/ part of ItemGet operation.
+IW_EXPORT iwrc aws4dd_item_get_arr(
+  struct aws4dd_item_put *op,
+  const char             *path,
+  const char             *key,
+  const char            **vals);
+
+/// Sets /Key/ part of ItemGet operation.
+IW_EXPORT iwrc aws4dd_item_get_val(
+  struct aws4dd_item_put *op,
+  const char             *path,
+  const char             *key,
+  const char             *val);
+
+/// Executes ItemGet operation.
+IW_EXPORT iwrc aws4dd_item_get(
+  const struct aws4_request_spec *spec,
+  struct aws4dd_item_get         *op,
+  struct aws4dd_response        **rpp);
 
 IW_EXTERN_C_END

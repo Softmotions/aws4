@@ -541,11 +541,12 @@ iwrc aws4dd_item_put_op(struct aws4dd_item_put **opp, const struct aws4dd_item_p
   RCB(finish, op = iwpool_calloc(sizeof(*op), pool));
   op->pool = pool;
 
+  memcpy(&op->spec, spec, sizeof(op->spec));
   RCB(finish, op->spec.table_name = iwpool_strdup2(pool, spec->table_name));
   if (spec->condition_expression) {
     RCB(finish, op->spec.condition_expression = iwpool_strdup2(pool, spec->condition_expression));
   }
-  op->spec.ret = spec->ret;
+
   RCC(rc, finish, jbn_from_json("{}", &op->n, pool));
   *opp = op;
 
@@ -705,6 +706,131 @@ iwrc aws4dd_item_put(
   RCC(rc, finish, aws4_request_json(spec, &(struct aws4_request_json_payload) {
     .json = n,
     .amz_target = "DynamoDB_20120810.PutItem"
+  }, pool, &resp->data));
+
+  *rpp = resp;
+
+finish:
+  return rc;
+}
+
+struct aws4dd_item_get {
+  IWPOOL *pool;
+  struct aws4dd_item_get_spec spec;
+  JBL_NODE n; // JSON spec
+};
+
+iwrc aws4dd_item_get_op(struct aws4dd_item_get **opp, const struct aws4dd_item_get_spec *spec) {
+  iwrc rc = 0;
+  if (!opp || !spec || !spec->table_name) {
+    return IW_ERROR_INVALID_ARGS;
+  }
+
+  IWPOOL *pool = iwpool_create_empty();
+  if (!pool) {
+    return iwrc_set_errno(IW_ERROR_ALLOC, errno);
+  }
+
+  struct aws4dd_item_get *op = iwpool_calloc(sizeof(*op), pool);
+  RCB(finish, op);
+  op->pool = pool;
+
+  memcpy(&op->spec, spec, sizeof(*spec));
+  RCB(finish, op->spec.table_name = iwpool_strdup2(pool, spec->table_name));
+  RCB(finish, op->spec.projection_expression = iwpool_strdup2(pool, spec->projection_expression));
+
+  RCC(rc, finish, jbn_from_json("{}", &op->n, pool));
+  *opp = op;
+
+finish:
+  if (rc) {
+    iwpool_destroy(pool);
+  }
+  return rc;
+}
+
+void aws4dd_item_get_op_destroy(struct aws4dd_item_get **opp) {
+  if (opp && *opp) {
+    struct aws4dd_item_get *op = *opp;
+    *opp = 0;
+    iwpool_destroy(op->pool);
+  }
+}
+
+iwrc aws4dd_item_get_expression_attr_name(struct aws4dd_item_get *op, const char *key, const char *value) {
+  iwrc rc = 0;
+  JBL_NODE n, n2;
+
+  RCC(rc, finish, jbn_from_json("{}", &n, op->pool));
+  RCC(rc, finish, jbn_add_item_obj(n, "ExpressionAttributeNames", &n2, op->pool));
+  RCC(rc, finish, jbn_add_item_str(n2, key, value, -1, 0, op->pool));
+  RCC(rc, finish, jbn_patch_auto(op->n, n, op->pool));
+
+finish:
+  return rc;
+}
+
+iwrc aws4dd_item_get_arr(
+  struct aws4dd_item_put *op,
+  const char             *path,
+  const char             *key,
+  const char            **vals
+  ) {
+  if (!op || !path || !key || !vals) {
+    return IW_ERROR_INVALID_ARGS;
+  }
+  return _item_put(op->pool, op->n, path, key, vals);
+}
+
+iwrc aws4dd_item_get_val(
+  struct aws4dd_item_put *op,
+  const char             *path,
+  const char             *key,
+  const char             *val
+  ) {
+  return aws4dd_item_get_arr(op, path, key, (const char*[]) { val, 0 });
+}
+
+iwrc aws4dd_item_get(
+  const struct aws4_request_spec *spec,
+  struct aws4dd_item_get         *op,
+  struct aws4dd_response        **rpp
+  ) {
+  if (!spec || !op || !rpp) {
+    return IW_ERROR_INVALID_ARGS;
+  }
+  *rpp = 0;
+  RCR(_init());
+  iwrc rc = 0;
+
+  IWPOOL *pool = op->pool;
+  struct aws4dd_response *resp = iwpool_calloc(sizeof(*resp), pool);
+  RCB(finish, resp);
+  resp->pool = pool;
+
+  JBL_NODE n = op->n;
+  RCC(rc, finish, jbn_add_item_str(n, "TableName", op->spec.table_name, -1, 0, pool));
+
+  if (op->spec.projection_expression) {
+    RCC(rc, finish, jbn_add_item_str(n, "ProjectionExpression", op->spec.projection_expression, -1, 0, pool));
+  }
+
+  RCC(rc, finish, jbn_add_item_bool(n, "ConsistentRead", op->spec.consistent_read, 0, pool));
+
+  switch (op->spec.return_consumed_capacity) {
+    case AWS4DD_RETURN_CONSUMED_TOTAL:
+      RCC(rc, finish, jbn_add_item_str(n, "ReturnConsumedCapacity", "TOTAL", IW_LLEN("TOTAL"), 0, pool));
+      break;
+    case AWS4DD_RETURN_CONSUMED_INDEXES:
+      RCC(rc, finish, jbn_add_item_str(n, "ReturnConsumedCapacity", "INDEXES", IW_LLEN("INDEXES"), 0, pool));
+      break;
+    case AWS4DD_RETURN_CONSUMED_NONE:
+      break;
+  }
+
+  RCC(rc, finish, aws4_request_json(spec, &(struct aws4_request_json_payload) {
+    .json = n,
+    .amz_target = "DynamoDB_20120810.GetItem"
   }, pool, &resp->data));
 
   *rpp = resp;
