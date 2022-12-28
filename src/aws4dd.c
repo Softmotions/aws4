@@ -770,7 +770,7 @@ finish:
   return rc;
 }
 
-iwrc aws4dd_item_get_arr(
+iwrc aws4dd_item_get_key_arr(
   struct aws4dd_item_put *op,
   const char             *path,
   const char             *key,
@@ -782,13 +782,13 @@ iwrc aws4dd_item_get_arr(
   return _item_put(op->pool, op->n, path, key, vals);
 }
 
-iwrc aws4dd_item_get_val(
+iwrc aws4dd_item_get_key_val(
   struct aws4dd_item_put *op,
   const char             *path,
   const char             *key,
   const char             *val
   ) {
-  return aws4dd_item_get_arr(op, path, key, (const char*[]) { val, 0 });
+  return aws4dd_item_get_key_arr(op, path, key, (const char*[]) { val, 0 });
 }
 
 iwrc aws4dd_item_get(

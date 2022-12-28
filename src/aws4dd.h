@@ -178,14 +178,14 @@ IW_EXPORT iwrc aws4dd_item_get_expression_attr_name(struct aws4dd_item_get *op, 
 
 
 /// Sets /Key/ part of ItemGet operation.
-IW_EXPORT iwrc aws4dd_item_get_arr(
+IW_EXPORT iwrc aws4dd_item_get_key_arr(
   struct aws4dd_item_put *op,
   const char             *path,
   const char             *key,
   const char            **vals);
 
 /// Sets /Key/ part of ItemGet operation.
-IW_EXPORT iwrc aws4dd_item_get_val(
+IW_EXPORT iwrc aws4dd_item_get_key_val(
   struct aws4dd_item_put *op,
   const char             *path,
   const char             *key,
