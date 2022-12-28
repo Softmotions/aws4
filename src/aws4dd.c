@@ -542,10 +542,10 @@ iwrc aws4dd_item_put_op(struct aws4dd_item_put **opp, const struct aws4dd_item_p
   op->pool = pool;
 
   RCB(finish, op->spec.table_name = iwpool_strdup2(pool, spec->table_name));
-  if (spec->cond_expression) {
-    RCB(finish, op->spec.cond_expression = iwpool_strdup2(pool, spec->cond_expression));
+  if (spec->condition_expression) {
+    RCB(finish, op->spec.condition_expression = iwpool_strdup2(pool, spec->condition_expression));
   }
-  op->spec.return_values = spec->return_values;
+  op->spec.ret = spec->ret;
   RCC(rc, finish, jbn_from_json("{}", &op->n, pool));
   *opp = op;
 
@@ -563,30 +563,33 @@ void awd4dd_item_put_op_destroy(struct aws4dd_item_put **opp) {
   }
 }
 
-static iwrc _item_val(struct aws4dd_item_put *op, const char *key, const char **vals, JBL_NODE *out) {
+static iwrc _item_val(IWPOOL *pool, const char *key, const char **vals, JBL_NODE *out) {
   iwrc rc = 0;
   *out = 0;
   JBL_NODE n = 0;
 
   if (strcmp(key, "NULL") == 0 || strcmp(key, "BOOL") == 0) {
     bool vbool = strcmp("true", *vals) == 0;
-    RCB(finish, n->vptr = iwpool_strdup2(op->pool, *vals));
+    RCB(finish, n = iwpool_calloc(sizeof(*n), pool));
+    RCB(finish, n->vptr = iwpool_strdup2(pool, *vals));
     n->type = JBV_BOOL;
     n->vbool = vbool;
   } else if (key[0] == 'L' || (strlen(key) == 2 && key[1] == 'S')) {
     // Process vals as array
-    RCC(rc, finish, jbn_from_json("[]", &n, op->pool));
-    for (const char *v = *vals; *v != '\0'; ++vals) {
-      RCC(rc, finish, jbn_add_item_str(n, 0, v, -1, 0, op->pool));
+    RCC(rc, finish, jbn_from_json("[]", &n, pool));
+    for (const char *v = *vals; v; ++vals, v = *vals) {
+      RCC(rc, finish, jbn_add_item_str(n, 0, v, -1, 0, pool));
     }
   } else {
     // Process vals as simple string
-    RCB(finish, n->vptr = iwpool_strdup2(op->pool, *vals));
+    RCB(finish, n = iwpool_calloc(sizeof(*n), pool));
+    RCB(finish, n->vptr = iwpool_strdup2(pool, *vals));
     n->type = JBV_STR;
     n->vsize = strlen(n->vptr);
   }
 
-  RCB(finish, n->key = iwpool_strdup2(op->pool, key));
+  RCB(finish, n->key = iwpool_strdup2(pool, key));
+  n->klidx = strlen(n->key);
 
   *out = n;
 
@@ -595,24 +598,24 @@ finish:
 }
 
 static iwrc _item_put(
-  struct aws4dd_item_put *op, JBL_NODE target, const char *path, const char *key,
+  IWPOOL *pool, JBL_NODE target, const char *path, const char *key,
   const char **vals
   ) {
   iwrc rc = 0;
   JBL_NODE n;
   JBL_PATCH p = { .path = path, .op = JBP_ADD_CREATE };
 
-  RCC(rc, finish, _item_val(op, key, vals, &n));
-  RCC(rc, finish, jbn_from_json("{}", &p.vnode, op->pool));
+  RCC(rc, finish, _item_val(pool, key, vals, &n));
+  RCC(rc, finish, jbn_from_json("{}", &p.vnode, pool));
   jbn_add_item(p.vnode, n);
 
-  RCC(rc, finish, jbn_patch(target, &p, 1, op->pool));
+  RCC(rc, finish, jbn_patch(target, &p, 1, pool));
 
 finish:
   return rc;
 }
 
-iwrc aws4dd_item_put_attr(
+iwrc aws4dd_item_put_arr(
   struct aws4dd_item_put *op,
   const char             *path,
   const char             *key,
@@ -621,7 +624,16 @@ iwrc aws4dd_item_put_attr(
   if (!op || !path || !key || !vals) {
     return IW_ERROR_INVALID_ARGS;
   }
-  return _item_put(op, op->n, path, key, vals);
+  return _item_put(op->pool, op->n, path, key, vals);
+}
+
+iwrc aws4dd_item_put_val(
+  struct aws4dd_item_put *op,
+  const char             *path,
+  const char             *key,
+  const char             *val
+  ) {
+  return aws4dd_item_put_arr(op, path, key, (const char*[]) { val, 0 });
 }
 
 iwrc aws4dd_item_put_expression_attr_name(struct aws4dd_item_put *op, const char *key, const char *val) {
@@ -649,8 +661,55 @@ iwrc aws4dd_item_put(
   RCR(_init());
   iwrc rc = 0;
 
-  // TODO:
+  IWPOOL *pool = op->pool;
+  struct aws4dd_response *resp = iwpool_calloc(sizeof(*resp), pool);
+  RCB(finish, resp);
+  resp->pool = pool;
 
+  JBL_NODE n = op->n;
+  RCC(rc, finish, jbn_add_item_str(n, "TableName", op->spec.table_name, -1, 0, pool));
+
+  switch (op->spec.ret.values) {
+    case AWS4DD_RETURN_VALUES_ALL_OLD:
+      RCC(rc, finish, jbn_add_item_str(n, "ReturnValues", "ALL_OLD", IW_LLEN("ALL_OLD"), 0, pool));
+      break;
+    case AWS4DD_RETURN_VALUES_NONE:
+    default:
+      break;
+  }
+
+  switch (op->spec.ret.metrics) {
+    case AWS4DD_RETURN_COLLECTION_SIZE:
+      RCC(rc, finish, jbn_add_item_str(n, "ReturnItemCollectionMetrics", "SIZE", IW_LLEN("SIZE"), 0, pool));
+      break;
+    case AWS4DD_RETURN_COLLECTION_NONE:
+    default:
+      break;
+  }
+
+  switch (op->spec.ret.capacity) {
+    case AWS4DD_RETURN_CONSUMED_TOTAL:
+      RCC(rc, finish, jbn_add_item_str(n, "ReturnConsumedCapacity", "TOTAL", IW_LLEN("TOTAL"), 0, pool));
+      break;
+    case AWS4DD_RETURN_CONSUMED_INDEXES:
+      RCC(rc, finish, jbn_add_item_str(n, "ReturnConsumedCapacity", "INDEXES", IW_LLEN("INDEXES"), 0, pool));
+      break;
+    case AWS4DD_RETURN_CONSUMED_NONE:
+      break;
+  }
+
+  if (op->spec.condition_expression) {
+    RCC(rc, finish, jbn_add_item_str(n, "ConditionExpression", op->spec.condition_expression, -1, 0, pool));
+  }
+
+  RCC(rc, finish, aws4_request_json(spec, &(struct aws4_request_json_payload) {
+    .json = n,
+    .amz_target = "DynamoDB_20120810.PutItem"
+  }, pool, &resp->data));
+
+  *rpp = resp;
+
+finish:
   return rc;
 }
 

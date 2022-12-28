@@ -81,7 +81,49 @@ static iwrc _test_basic_comm(void) {
   return rc;
 }
 
-static iwrc _test_table_create_describe_delete(void) {
+static iwrc _test_table_get_item(void) {
+  iwrc rc = 0;
+
+  return rc;
+}
+
+
+static iwrc _test_table_put_item(void) {
+  iwrc rc = 0;
+  struct aws4dd_item_put *op = 0;
+
+  RCC(rc, finish, aws4dd_item_put_op(&op, &(struct aws4dd_item_put_spec) {
+    .table_name = "Thread",
+    .condition_expression = "ForumName <> :f and Subject <> :s"
+  }));
+
+  RCC(rc, finish, aws4dd_item_put_val(op, "/ExpressionAttributeValues/:f", "S", "Amazon DynamoDB"));
+  RCC(rc, finish, aws4dd_item_put_val(op, "/ExpressionAttributeValues/:s", "S", "How do I update multiple items?"));
+
+  RCC(rc, finish, aws4dd_item_put_val(op, "/Item/LastPostDateTime", "S", "201303190422"));
+  RCC(rc, finish, aws4dd_item_put_arr(op, "/Item/Tags", "SS", (const char*[]) { "Update", "Multiple", "Help", 0 }));
+  RCC(rc, finish, aws4dd_item_put_val(op, "/Item/ForumName", "S", "Amazon Dynamodb"));
+  RCC(rc, finish, aws4dd_item_put_val(op, "/Item/Message", "S", "I want to update multiple items in a single call."));
+  RCC(rc, finish, aws4dd_item_put_val(op, "/Item/Subject", "S", "How do I update multiple items?"));
+  RCC(rc, finish, aws4dd_item_put_val(op, "/Item/LastPostedBy", "S", "fred@example.com"));
+
+  struct aws4dd_response *resp;
+  struct aws4_request_spec spec = {
+    .flags          = AWS_SERVICE_DYNAMODB,
+    .aws_region     = "us-east-1",
+    .aws_key        = "fakeMyKeyId",
+    .aws_secret_key = "fakeSecretAccessKey",
+    .aws_url        = "http://localhost:8000"
+  };
+
+  RCC(rc, finish, aws4dd_item_put(&spec, op, &resp));
+
+finish:
+  aws4dd_item_put_op_destroy(&op);
+  return rc;
+}
+
+static iwrc _test_table_operations(void) {
   iwrc rc = 0;
   struct aws4dd_table_create *op = 0;
 
@@ -114,6 +156,9 @@ static iwrc _test_table_create_describe_delete(void) {
   RCC(rc, finish, aws4dd_table_describe(&spec, "Thread", &resp));
   aws4dd_response_destroy(&resp);
 
+  RCC(rc, finish, _test_table_put_item());
+  RCC(rc, finish, _test_table_get_item());
+
   RCC(rc, finish, aws4dd_table_delete(&spec, "Thread", &resp));
   aws4dd_response_destroy(&resp);
 
@@ -127,7 +172,7 @@ static void* _run_tests(void *d) {
   iwrc rc = 0;
 
   RCC(rc, finish, _test_basic_comm());
-  RCC(rc, finish, _test_table_create_describe_delete());
+  RCC(rc, finish, _test_table_operations());
 
 finish:
   IWN_ASSERT(rc == 0);

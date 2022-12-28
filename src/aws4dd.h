@@ -111,12 +111,12 @@ typedef enum {
 
 struct aws4dd_item_put_spec {
   const char *table_name;
-  const char *cond_expression;
+  const char *condition_expression;
   struct {
-    aws4dd_return_values_e return_values;
+    aws4dd_return_values_e values;
     aws4dd_return_consumed_capacity_e  capacity;
     aws4dd_return_collection_metrics_e metrics;
-  } return_values;
+  } ret;
 };
 
 IW_EXPORT iwrc aws4dd_item_put_op(struct aws4dd_item_put **opp, const struct aws4dd_item_put_spec *spec);
@@ -125,11 +125,18 @@ IW_EXPORT void aws4dd_item_put_op_destroy(struct aws4dd_item_put **opp);
 
 IW_EXPORT void awd4dd_item_put_op_destroy(struct aws4dd_item_put **opp);
 
-IW_EXPORT iwrc aws4dd_item_put_attr(
+IW_EXPORT iwrc aws4dd_item_put_arr(
   struct aws4dd_item_put *op,
   const char             *path,
   const char             *key,
   const char            **vals);
+
+IW_EXPORT iwrc aws4dd_item_put_val(
+  struct aws4dd_item_put *op,
+  const char             *path,
+  const char             *key,
+  const char             *val);
+
 
 IW_EXPORT iwrc aws4dd_item_put_expression_attr_name(struct aws4dd_item_put *op, const char *key, const char *value);
 
