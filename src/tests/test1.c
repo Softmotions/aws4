@@ -83,10 +83,48 @@ static iwrc _test_basic_comm(void) {
 
 static iwrc _test_table_get_item(void) {
   iwrc rc = 0;
+  struct aws4dd_item_get *op = 0;
+  JBL_NODE n;
 
+  RCC(rc, finish, aws4dd_item_get_op(&op, &(struct aws4dd_item_get_spec) {
+    .table_name = "Thread",
+    .consistent_read = true,
+    .return_consumed_capacity = AWS4DD_RETURN_CONSUMED_TOTAL,
+    .projection_expression = "LastPostDateTime, Message, Tags",
+  }));
+
+  RCC(rc, finish, aws4dd_item_get_key_val(op, "/Key/ForumName", "S", "Amazon DynamoDB"));
+  RCC(rc, finish, aws4dd_item_get_key_val(op, "/Key/Subject", "S", "How do I update multiple items?"));
+
+  struct aws4dd_response *resp;
+  struct aws4_request_spec spec = {
+    .flags          = AWS_SERVICE_DYNAMODB,
+    .aws_region     = "us-east-1",
+    .aws_key        = "fakeMyKeyId",
+    .aws_secret_key = "fakeSecretAccessKey",
+    .aws_url        = "http://localhost:8000"
+  };
+
+  RCC(rc, finish, aws4dd_item_get(&spec, op, &resp));
+  RCC(rc, finish, jbn_at(resp->data, "/Item/Message/S", &n));
+  IWN_ASSERT_FATAL(n->type == JBV_STR);
+  IWN_ASSERT_FATAL(0 == strcmp(n->vptr, "I want to update multiple items in a single call."));
+  RCC(rc, finish, jbn_at(resp->data, "/Item/LastPostDateTime/S", &n));
+  IWN_ASSERT_FATAL(n->type == JBV_STR);
+  RCC(rc, finish, jbn_at(resp->data, "/Item/Tags/SS/1", &n));
+  IWN_ASSERT_FATAL(n->type == JBV_STR);
+  IWN_ASSERT_FATAL(0 == strcmp(n->vptr, "Multiple"));
+  RCC(rc, finish, jbn_at(resp->data, "/ConsumedCapacity/CapacityUnits", &n));
+  IWN_ASSERT_FATAL(n->type == JBV_F64);
+  IWN_ASSERT_FATAL(n->vf64 == 1.0);
+  RCC(rc, finish, jbn_at(resp->data, "/ConsumedCapacity/TableName", &n));
+  IWN_ASSERT_FATAL(n->type == JBV_STR);
+  IWN_ASSERT_FATAL(0 == strcmp(n->vptr, "Thread"));
+
+finish:
+  aws4dd_item_get_op_destroy(&op);
   return rc;
 }
-
 
 static iwrc _test_table_put_item(void) {
   iwrc rc = 0;
@@ -102,7 +140,7 @@ static iwrc _test_table_put_item(void) {
 
   RCC(rc, finish, aws4dd_item_put_val(op, "/Item/LastPostDateTime", "S", "201303190422"));
   RCC(rc, finish, aws4dd_item_put_arr(op, "/Item/Tags", "SS", (const char*[]) { "Update", "Multiple", "Help", 0 }));
-  RCC(rc, finish, aws4dd_item_put_val(op, "/Item/ForumName", "S", "Amazon Dynamodb"));
+  RCC(rc, finish, aws4dd_item_put_val(op, "/Item/ForumName", "S", "Amazon DynamoDB"));
   RCC(rc, finish, aws4dd_item_put_val(op, "/Item/Message", "S", "I want to update multiple items in a single call."));
   RCC(rc, finish, aws4dd_item_put_val(op, "/Item/Subject", "S", "How do I update multiple items?"));
   RCC(rc, finish, aws4dd_item_put_val(op, "/Item/LastPostedBy", "S", "fred@example.com"));

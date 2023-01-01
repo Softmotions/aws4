@@ -771,7 +771,7 @@ finish:
 }
 
 iwrc aws4dd_item_get_key_arr(
-  struct aws4dd_item_put *op,
+  struct aws4dd_item_get *op,
   const char             *path,
   const char             *key,
   const char            **vals
@@ -783,7 +783,7 @@ iwrc aws4dd_item_get_key_arr(
 }
 
 iwrc aws4dd_item_get_key_val(
-  struct aws4dd_item_put *op,
+  struct aws4dd_item_get *op,
   const char             *path,
   const char             *key,
   const char             *val
