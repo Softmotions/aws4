@@ -81,6 +81,50 @@ static iwrc _test_basic_comm(void) {
   return rc;
 }
 
+static iwrc _test_table_query(void) {
+  iwrc rc = 0;
+  struct aws4dd_query *op = 0;
+  JBL_NODE n;
+
+  RCC(rc, finish, aws4dd_query_op(&op, &(struct aws4dd_query_spec) {
+    .table_name = "Thread",
+    .key_condition_expression = "ForumName = :v1",
+    .projection_expression = "Subject, Tags",
+    .return_consumed_capacity = AWS4DD_RETURN_CONSUMED_TOTAL,
+    .limit = 10,
+    .consistent_read = true,
+  }));
+
+  RCC(rc, finish, aws4dd_query_value(op, "/ExpressionAttributeValues/:v1", "S", "Amazon DynamoDB"));
+
+  struct aws4dd_response *resp;
+  struct aws4_request_spec spec = {
+    .flags          = AWS_SERVICE_DYNAMODB,
+    .aws_region     = "us-east-1",
+    .aws_key        = "fakeMyKeyId",
+    .aws_secret_key = "fakeSecretAccessKey",
+    .aws_url        = "http://localhost:8000"
+  };
+
+  RCC(rc, finish, aws4dd_query(&spec, op, &resp));
+
+  // {"Items":[{"Subject":{"S":"How do I update multiple items?"}, "Tags":{"SS":["Help","Multiple","Update"]}}],
+  //  "Count":1,"ScannedCount":1,"ConsumedCapacity":{"TableName":"Thread","CapacityUnits":1.0}}
+  RCC(rc, finish, jbn_at(resp->data, "/Items/0/Subject/S", &n));
+  IWN_ASSERT(n->type == JBV_STR);
+  IWN_ASSERT(0 == strcmp(n->vptr, "How do I update multiple items?"));
+  RCC(rc, finish, jbn_at(resp->data, "/Items/0/Tags/SS/1", &n));
+  IWN_ASSERT(n->type == JBV_STR);
+  IWN_ASSERT(0 == strcmp(n->vptr, "Multiple"));
+  RCC(rc, finish, jbn_at(resp->data, "/Count", &n));
+  IWN_ASSERT(n->type == JBV_I64);
+  IWN_ASSERT(n->vi64 == 1);
+
+finish:
+  aws4dd_query_op_destroy(&op);
+  return rc;
+}
+
 static iwrc _test_table_get_item(void) {
   iwrc rc = 0;
   struct aws4dd_item_get *op = 0;
@@ -93,8 +137,8 @@ static iwrc _test_table_get_item(void) {
     .projection_expression = "LastPostDateTime, Message, Tags",
   }));
 
-  RCC(rc, finish, aws4dd_item_get_key_val(op, "/Key/ForumName", "S", "Amazon DynamoDB"));
-  RCC(rc, finish, aws4dd_item_get_key_val(op, "/Key/Subject", "S", "How do I update multiple items?"));
+  RCC(rc, finish, aws4dd_item_get_key_value(op, "/Key/ForumName", "S", "Amazon DynamoDB"));
+  RCC(rc, finish, aws4dd_item_get_key_value(op, "/Key/Subject", "S", "How do I update multiple items?"));
 
   struct aws4dd_response *resp;
   struct aws4_request_spec spec = {
@@ -135,15 +179,15 @@ static iwrc _test_table_put_item(void) {
     .condition_expression = "ForumName <> :f and Subject <> :s"
   }));
 
-  RCC(rc, finish, aws4dd_item_put_val(op, "/ExpressionAttributeValues/:f", "S", "Amazon DynamoDB"));
-  RCC(rc, finish, aws4dd_item_put_val(op, "/ExpressionAttributeValues/:s", "S", "How do I update multiple items?"));
+  RCC(rc, finish, aws4dd_item_put_value(op, "/ExpressionAttributeValues/:f", "S", "Amazon DynamoDB"));
+  RCC(rc, finish, aws4dd_item_put_value(op, "/ExpressionAttributeValues/:s", "S", "How do I update multiple items?"));
 
-  RCC(rc, finish, aws4dd_item_put_val(op, "/Item/LastPostDateTime", "S", "201303190422"));
-  RCC(rc, finish, aws4dd_item_put_arr(op, "/Item/Tags", "SS", (const char*[]) { "Update", "Multiple", "Help", 0 }));
-  RCC(rc, finish, aws4dd_item_put_val(op, "/Item/ForumName", "S", "Amazon DynamoDB"));
-  RCC(rc, finish, aws4dd_item_put_val(op, "/Item/Message", "S", "I want to update multiple items in a single call."));
-  RCC(rc, finish, aws4dd_item_put_val(op, "/Item/Subject", "S", "How do I update multiple items?"));
-  RCC(rc, finish, aws4dd_item_put_val(op, "/Item/LastPostedBy", "S", "fred@example.com"));
+  RCC(rc, finish, aws4dd_item_put_value(op, "/Item/LastPostDateTime", "S", "201303190422"));
+  RCC(rc, finish, aws4dd_item_put_array(op, "/Item/Tags", "SS", (const char*[]) { "Update", "Multiple", "Help", 0 }));
+  RCC(rc, finish, aws4dd_item_put_value(op, "/Item/ForumName", "S", "Amazon DynamoDB"));
+  RCC(rc, finish, aws4dd_item_put_value(op, "/Item/Message", "S", "I want to update multiple items in a single call."));
+  RCC(rc, finish, aws4dd_item_put_value(op, "/Item/Subject", "S", "How do I update multiple items?"));
+  RCC(rc, finish, aws4dd_item_put_value(op, "/Item/LastPostedBy", "S", "fred@example.com"));
 
   struct aws4dd_response *resp;
   struct aws4_request_spec spec = {
@@ -196,6 +240,7 @@ static iwrc _test_table_operations(void) {
 
   RCC(rc, finish, _test_table_put_item());
   RCC(rc, finish, _test_table_get_item());
+  RCC(rc, finish, _test_table_query());
 
   RCC(rc, finish, aws4dd_table_delete(&spec, "Thread", &resp));
   aws4dd_response_destroy(&resp);

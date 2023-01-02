@@ -125,13 +125,13 @@ IW_EXPORT void aws4dd_item_put_op_destroy(struct aws4dd_item_put **opp);
 
 IW_EXPORT void awd4dd_item_put_op_destroy(struct aws4dd_item_put **opp);
 
-IW_EXPORT iwrc aws4dd_item_put_arr(
+IW_EXPORT iwrc aws4dd_item_put_array(
   struct aws4dd_item_put *op,
   const char             *path,
   const char             *key,
   const char            **vals);
 
-IW_EXPORT iwrc aws4dd_item_put_val(
+IW_EXPORT iwrc aws4dd_item_put_value(
   struct aws4dd_item_put *op,
   const char             *path,
   const char             *key,
@@ -176,25 +176,76 @@ IW_EXPORT void aws4dd_item_get_op_destroy(struct aws4dd_item_get **opp);
 ///
 IW_EXPORT iwrc aws4dd_item_get_expression_attr_name(struct aws4dd_item_get *op, const char *key, const char *value);
 
-
 /// Sets /Key/ part of ItemGet operation.
-IW_EXPORT iwrc aws4dd_item_get_key_arr(
+IW_EXPORT iwrc aws4dd_item_get_key_array(
   struct aws4dd_item_get *op,
   const char             *path,
   const char             *key,
-  const char            **vals);
+  const char            **values);
 
 /// Sets /Key/ part of ItemGet operation.
-IW_EXPORT iwrc aws4dd_item_get_key_val(
+IW_EXPORT iwrc aws4dd_item_get_key_value(
   struct aws4dd_item_get *op,
   const char             *path,
   const char             *key,
-  const char             *val);
+  const char             *value);
 
 /// Executes ItemGet operation.
 IW_EXPORT iwrc aws4dd_item_get(
   const struct aws4_request_spec *spec,
   struct aws4dd_item_get         *op,
+  struct aws4dd_response        **rpp);
+
+//
+// Query
+//
+
+struct aws4dd_query;
+
+typedef enum {
+  AWS4DD_SELECT_SPECIFIC_ATTRIBUTES = 1,
+  AWS4DD_SELECT_ALL_ATTRIBUTES,
+  AWS4DD_SELECT_ALL_PROJECTED_ATTRIBUTES,
+  AWS4DD_SELECT_COUNT,
+} aws4dd_select_e;
+
+/// Query operation specification.
+struct aws4dd_query_spec {
+  const char *table_name;
+  const char *index_name;
+  const char *key_condition_expression;
+  const char *filter_expression;
+  const char *projection_expression;
+  aws4dd_return_consumed_capacity_e return_consumed_capacity;
+  aws4dd_select_e select;
+  bool     consistent_read;
+  bool     scan_index_forward;
+  uint32_t limit;
+};
+
+/// Create Query operation.
+IW_EXPORT iwrc aws4dd_query_op(struct aws4dd_query **opp, const struct aws4dd_query_spec *spec);
+
+/// Destroy Query operation.
+IW_EXPORT void aws4dd_query_op_destroy(struct aws4dd_query **opp);
+
+/// Adds key-value pair to the given ExpressionAttributeNames part of Query operation.
+/// @param op Query operation
+/// @param key ExpressionAttributeNames key
+/// @param val ExpressionAttributeNames value
+///
+IW_EXPORT iwrc aws4dd_query_expression_attr_name(struct aws4dd_query *op, const char *key, const char *value);
+
+/// Adds value to the /ExpressionAttributeValues or /ExclusiveStartKey part of Query operation.
+IW_EXPORT iwrc aws4dd_query_value(struct aws4dd_query *op, const char *path, const char *key, const char *value);
+
+/// Adds values to the /ExpressionAttributeValues or /ExclusiveStartKey part of Query operation.
+IW_EXPORT iwrc aws4dd_query_array(struct aws4dd_query *op, const char *path, const char *key, const char **values);
+
+/// Executes Query operation.
+IW_EXPORT iwrc aws4dd_query(
+  const struct aws4_request_spec *spec,
+  struct aws4dd_query            *op,
   struct aws4dd_response        **rpp);
 
 IW_EXTERN_C_END

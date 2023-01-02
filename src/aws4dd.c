@@ -23,9 +23,9 @@ void aws4dd_response_destroy(struct aws4dd_response **rpp) {
   }
 }
 
-///
-/// Table.
-///
+//
+// TableCreate
+//
 
 struct aws4dd_table_create {
   IWPOOL     *pool;
@@ -431,6 +431,10 @@ finish:
   return rc;
 }
 
+//
+// DescribeTable
+//
+
 iwrc aws4dd_table_describe(const struct aws4_request_spec *spec, const char *name, struct aws4dd_response **rpp) {
   if (!spec || !rpp) {
     return IW_ERROR_INVALID_ARGS;
@@ -463,6 +467,10 @@ finish:
   }
   return rc;
 }
+
+//
+// DeleteTable
+//
 
 iwrc aws4dd_table_delete(const struct aws4_request_spec *spec, const char *name, struct aws4dd_response **rpp) {
   if (!spec || !rpp) {
@@ -498,7 +506,7 @@ finish:
 }
 
 //
-// Items
+// PutItem
 //
 
 typedef enum {
@@ -616,7 +624,7 @@ finish:
   return rc;
 }
 
-iwrc aws4dd_item_put_arr(
+iwrc aws4dd_item_put_array(
   struct aws4dd_item_put *op,
   const char             *path,
   const char             *key,
@@ -628,13 +636,13 @@ iwrc aws4dd_item_put_arr(
   return _item_put(op->pool, op->n, path, key, vals);
 }
 
-iwrc aws4dd_item_put_val(
+iwrc aws4dd_item_put_value(
   struct aws4dd_item_put *op,
   const char             *path,
   const char             *key,
   const char             *val
   ) {
-  return aws4dd_item_put_arr(op, path, key, (const char*[]) { val, 0 });
+  return aws4dd_item_put_array(op, path, key, (const char*[]) { val, 0 });
 }
 
 iwrc aws4dd_item_put_expression_attr_name(struct aws4dd_item_put *op, const char *key, const char *val) {
@@ -714,6 +722,10 @@ finish:
   return rc;
 }
 
+//
+// GetItem
+//
+
 struct aws4dd_item_get {
   IWPOOL *pool;
   struct aws4dd_item_get_spec spec;
@@ -770,25 +782,25 @@ finish:
   return rc;
 }
 
-iwrc aws4dd_item_get_key_arr(
+iwrc aws4dd_item_get_key_array(
   struct aws4dd_item_get *op,
   const char             *path,
   const char             *key,
-  const char            **vals
+  const char            **values
   ) {
-  if (!op || !path || !key || !vals) {
+  if (!op || !path || !key || !values) {
     return IW_ERROR_INVALID_ARGS;
   }
-  return _item_put(op->pool, op->n, path, key, vals);
+  return _item_put(op->pool, op->n, path, key, values);
 }
 
-iwrc aws4dd_item_get_key_val(
+iwrc aws4dd_item_get_key_value(
   struct aws4dd_item_get *op,
   const char             *path,
   const char             *key,
-  const char             *val
+  const char             *value
   ) {
-  return aws4dd_item_get_key_arr(op, path, key, (const char*[]) { val, 0 });
+  return aws4dd_item_get_key_array(op, path, key, (const char*[]) { value, 0 });
 }
 
 iwrc aws4dd_item_get(
@@ -831,6 +843,183 @@ iwrc aws4dd_item_get(
   RCC(rc, finish, aws4_request_json(spec, &(struct aws4_request_json_payload) {
     .json = n,
     .amz_target = "DynamoDB_20120810.GetItem"
+  }, pool, &resp->data));
+
+  *rpp = resp;
+
+finish:
+  return rc;
+}
+
+//
+// Query
+//
+
+struct aws4dd_query {
+  IWPOOL *pool;
+  struct aws4dd_query_spec spec;
+  JBL_NODE n; // JSON spec
+};
+
+iwrc aws4dd_query_op(struct aws4dd_query **opp, const struct aws4dd_query_spec *spec) {
+  iwrc rc = 0;
+  if (!opp || !spec || !spec->table_name) {
+    return IW_ERROR_INVALID_ARGS;
+  }
+
+  IWPOOL *pool = iwpool_create_empty();
+  if (!pool) {
+    return iwrc_set_errno(IW_ERROR_ALLOC, errno);
+  }
+
+  struct aws4dd_query *op = iwpool_calloc(sizeof(*op), pool);
+  RCB(finish, op);
+  op->pool = pool;
+
+  memcpy(&op->spec, spec, sizeof(*spec));
+  RCB(finish, op->spec.table_name = iwpool_strdup2(pool, spec->table_name));
+  if (spec->index_name) {
+    RCB(finish, op->spec.index_name = iwpool_strdup2(pool, spec->index_name));
+  }
+  if (spec->projection_expression) {
+    RCB(finish, op->spec.projection_expression = iwpool_strdup2(pool, spec->projection_expression));
+  }
+  if (spec->filter_expression) {
+    RCB(finish, op->spec.filter_expression = iwpool_strdup2(pool, spec->filter_expression));
+  }
+  if (spec->key_condition_expression) {
+    RCB(finish, op->spec.key_condition_expression = iwpool_strdup2(pool, spec->key_condition_expression));
+  }
+
+  RCC(rc, finish, jbn_from_json("{}", &op->n, pool));
+  *opp = op;
+
+finish:
+  if (rc) {
+    aws4dd_query_op_destroy(&op);
+  }
+  return rc;
+}
+
+void aws4dd_query_op_destroy(struct aws4dd_query **opp) {
+  if (opp && *opp) {
+    struct aws4dd_query *op = *opp;
+    *opp = 0;
+    iwpool_destroy(op->pool);
+  }
+}
+
+iwrc aws4dd_query_expression_attr_name(
+  struct aws4dd_query *op,
+  const char          *key,
+  const char          *value
+  ) {
+  if (!op || !key || !value) {
+    return IW_ERROR_INVALID_ARGS;
+  }
+  iwrc rc = 0;
+  JBL_NODE n, n2;
+
+  RCC(rc, finish, jbn_from_json("{}", &n, op->pool));
+  RCC(rc, finish, jbn_add_item_obj(n, "ExpressionAttributeNames", &n2, op->pool));
+  RCC(rc, finish, jbn_add_item_str(n2, key, value, -1, 0, op->pool));
+  RCC(rc, finish, jbn_patch_auto(op->n, n, op->pool));
+
+finish:
+  return rc;
+}
+
+iwrc aws4dd_query_array(struct aws4dd_query *op, const char *path, const char *key, const char **values) {
+  if (!op || !key || !values) {
+    return IW_ERROR_INVALID_ARGS;
+  }
+  return _item_put(op->pool, op->n, path, key, values);
+}
+
+iwrc aws4dd_query_value(struct aws4dd_query *op, const char *path, const char *key, const char *value) {
+  return aws4dd_query_array(op, path, key, (const char*[]) { value, 0 });
+}
+
+iwrc aws4dd_query(
+  const struct aws4_request_spec *spec,
+  struct aws4dd_query *op, struct aws4dd_response **rpp
+  ) {
+  if (!spec || !op || !rpp) {
+    return IW_ERROR_INVALID_ARGS;
+  }
+  *rpp = 0;
+  RCR(_init());
+  iwrc rc = 0;
+  IWPOOL *pool = op->pool;
+  struct aws4dd_response *resp = iwpool_calloc(sizeof(*resp), pool);
+  RCB(finish, resp);
+  resp->pool = pool;
+
+  JBL_NODE n = op->n;
+  RCC(rc, finish, jbn_add_item_str(n, "TableName", op->spec.table_name, -1, 0, pool));
+
+  if (op->spec.index_name) {
+    RCC(rc, finish, jbn_add_item_str(n, "IndexName", op->spec.index_name, -1, 0, pool));
+  }
+
+  if (op->spec.projection_expression) {
+    RCC(rc, finish, jbn_add_item_str(n, "ProjectionExpression", op->spec.projection_expression, -1, 0, pool));
+  }
+
+  if (op->spec.filter_expression) {
+    RCC(rc, finish, jbn_add_item_str(n, "FilterExpression", op->spec.filter_expression, -1, 0, pool));
+  }
+
+  if (op->spec.key_condition_expression) {
+    RCC(rc, finish, jbn_add_item_str(n, "KeyConditionExpression", op->spec.key_condition_expression, -1, 0, pool));
+  }
+
+  if (op->spec.limit) {
+    RCC(rc, finish, jbn_add_item_i64(n, "Limit", op->spec.limit, 0, pool));
+  }
+
+  if (op->spec.consistent_read) {
+    RCC(rc, finish, jbn_add_item_bool(n, "ConsistentRead", op->spec.consistent_read, 0, pool));
+  }
+
+  if (op->spec.scan_index_forward) {
+    RCC(rc, finish, jbn_add_item_bool(n, "ScanIndexForward", op->spec.scan_index_forward, 0, pool));
+  }
+
+  switch (op->spec.select) {
+    case AWS4DD_SELECT_ALL_ATTRIBUTES:
+      RCC(rc, finish, jbn_add_item_str(n, "Select", "ALL_ATTRIBUTES", -1, 0, pool));
+      break;
+    case AWS4DD_SELECT_ALL_PROJECTED_ATTRIBUTES:
+      RCC(rc, finish, jbn_add_item_str(n, "Select", "ALL_PROJECTED_ATTRIBUTES", -1, 0, pool));
+      break;
+    case AWS4DD_SELECT_SPECIFIC_ATTRIBUTES:
+      RCC(rc, finish, jbn_add_item_str(n, "Select", "SPECIFIC_ATTRIBUTES", -1, 0, pool));
+      break;
+    case AWS4DD_SELECT_COUNT:
+      RCC(rc, finish, jbn_add_item_str(n, "Select", "COUNT", -1, 0, pool));
+      break;
+    default:
+      break;
+  }
+
+  switch (op->spec.return_consumed_capacity) {
+    case AWS4DD_RETURN_CONSUMED_INDEXES:
+      RCC(rc, finish, jbn_add_item_str(n, "ReturnConsumedCapacity", "INDEXES", -1, 0, pool));
+      break;
+    case AWS4DD_RETURN_CONSUMED_TOTAL:
+      RCC(rc, finish, jbn_add_item_str(n, "ReturnConsumedCapacity", "TOTAL", -1, 0, pool));
+      break;
+    case AWS4DD_RETURN_CONSUMED_NONE:
+      RCC(rc, finish, jbn_add_item_str(n, "ReturnConsumedCapacity", "NONE", -1, 0, pool));
+      break;
+    default:
+      break;
+  }
+
+  RCC(rc, finish, aws4_request_json(spec, &(struct aws4_request_json_payload) {
+    .json = n,
+    .amz_target = "DynamoDB_20120810.Query",
   }, pool, &resp->data));
 
   *rpp = resp;
