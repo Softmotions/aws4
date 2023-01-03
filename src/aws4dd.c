@@ -565,13 +565,6 @@ finish:
   return rc;
 }
 
-void awd4dd_item_put_op_destroy(struct aws4dd_item_put **opp) {
-  if (opp && *opp) {
-    iwpool_destroy((*opp)->pool);
-    *opp = 0;
-  }
-}
-
 static iwrc _item_val(IWPOOL *pool, const char *key, const char **vals, JBL_NODE *out) {
   iwrc rc = 0;
   *out = 0;
@@ -867,6 +860,8 @@ iwrc aws4dd_query_op(struct aws4dd_query **opp, const struct aws4dd_query_spec *
     return IW_ERROR_INVALID_ARGS;
   }
 
+  *opp = 0;
+
   IWPOOL *pool = iwpool_create_empty();
   if (!pool) {
     return iwrc_set_errno(IW_ERROR_ALLOC, errno);
@@ -930,7 +925,7 @@ finish:
 }
 
 iwrc aws4dd_query_array(struct aws4dd_query *op, const char *path, const char *key, const char **values) {
-  if (!op || !key || !values) {
+  if (!op || !path || !key || !values) {
     return IW_ERROR_INVALID_ARGS;
   }
   return _item_put(op->pool, op->n, path, key, values);
@@ -949,6 +944,7 @@ iwrc aws4dd_query(
   }
   *rpp = 0;
   RCR(_init());
+
   iwrc rc = 0;
   IWPOOL *pool = op->pool;
   struct aws4dd_response *resp = iwpool_calloc(sizeof(*resp), pool);
@@ -1020,6 +1016,140 @@ iwrc aws4dd_query(
   RCC(rc, finish, aws4_request_json(spec, &(struct aws4_request_json_payload) {
     .json = n,
     .amz_target = "DynamoDB_20120810.Query",
+  }, pool, &resp->data));
+
+  *rpp = resp;
+
+finish:
+  return rc;
+}
+
+//
+// DeleteItem
+//
+
+struct aws4dd_item_delete {
+  IWPOOL *pool;
+  struct aws4dd_item_delete_spec spec;
+  JBL_NODE n; // JSON spec
+};
+
+iwrc aws4dd_item_delete_op(struct aws4dd_item_delete **opp, const struct aws4dd_item_delete_spec *spec) {
+  iwrc rc = 0;
+  if (!opp || !spec || !spec->table_name) {
+    return IW_ERROR_INVALID_ARGS;
+  }
+
+  *opp = 0;
+
+  IWPOOL *pool = iwpool_create_empty();
+  if (!pool) {
+    return iwrc_set_errno(IW_ERROR_ALLOC, errno);
+  }
+
+  struct aws4dd_item_delete *op = iwpool_calloc(sizeof(*op), pool);
+  RCB(finish, op);
+  op->pool = pool;
+
+  memcpy(&op->spec, spec, sizeof(op->spec));
+  RCB(finish, op->spec.table_name = iwpool_strdup2(pool, spec->table_name));
+
+  if (spec->condition_expression) {
+    RCB(finish, op->spec.condition_expression = iwpool_strdup2(pool, spec->condition_expression));
+  }
+
+  RCC(rc, finish, jbn_from_json("{}", &op->n, pool));
+  *opp = op;
+
+finish:
+  if (rc) {
+    aws4dd_item_delete_op_destroy(&op);
+  }
+  return rc;
+}
+
+void aws4dd_item_delete_op_destroy(struct aws4dd_item_delete **opp) {
+  if (opp && *opp) {
+    struct aws4dd_item_delete *op = *opp;
+    *opp = 0;
+    iwpool_destroy(op->pool);
+  }
+}
+
+iwrc aws4dd_item_delete_array(
+  struct aws4dd_item_delete *op, const char *path,
+  const char *key, const char **values
+  ) {
+  if (!op || !path || !key || !values) {
+    return IW_ERROR_INVALID_ARGS;
+  }
+  return _item_put(op->pool, op->n, path, key, values);
+}
+
+iwrc aws4dd_item_delete_value(
+  struct aws4dd_item_delete *op, const char *path,
+  const char *key, const char *value
+  ) {
+  if (!op || !path || !key || !value) {
+    return IW_ERROR_INVALID_ARGS;
+  }
+  return aws4dd_item_delete_array(op, path, key, (const char*[]) { value, 0 });
+}
+
+iwrc aws4dd_item_delete(
+  const struct aws4_request_spec *spec,
+  struct aws4dd_item_delete      *op,
+  struct aws4dd_response        **rpp
+  ) {
+  if (!spec || !op || !rpp) {
+    return IW_ERROR_INVALID_ARGS;
+  }
+  *rpp = 0;
+  RCR(_init());
+
+  iwrc rc = 0;
+  IWPOOL *pool = op->pool;
+  struct aws4dd_response *resp = iwpool_calloc(sizeof(*resp), pool);
+  RCB(finish, resp);
+  resp->pool = pool;
+
+  JBL_NODE n = op->n;
+  RCC(rc, finish, jbn_add_item_str(n, "TableName", op->spec.table_name, -1, 0, pool));
+
+  if (op->spec.condition_expression) {
+    RCC(rc, finish, jbn_add_item_str(n, "ConditionExpression", op->spec.condition_expression, -1, 0, pool));
+  }
+
+  switch (op->spec.ret.values) {
+    case AWS4DD_RETURN_VALUES_ALL_OLD:
+      RCC(rc, finish, jbn_add_item_str(n, "ReturnValues", "ALL_OLD", -1, 0, pool));
+      break;
+    default:
+      break;
+  }
+
+  switch (op->spec.ret.consumed_capacity) {
+    case AWS4DD_RETURN_CONSUMED_TOTAL:
+      RCC(rc, finish, jbn_add_item_str(n, "ReturnConsumedCapacity", "TOTAL", -1, 0, pool));
+      break;
+    case AWS4DD_RETURN_CONSUMED_INDEXES:
+      RCC(rc, finish, jbn_add_item_str(n, "ReturnConsumedCapacity", "INDEXES", -1, 0, pool));
+      break;
+    default:
+      break;
+  }
+
+  switch (op->spec.ret.collection_metrics) {
+    case AWS4DD_RETURN_COLLECTION_SIZE:
+      RCC(rc, finish, jbn_add_item_str(n, "ReturnItemCollectionMetrics", "SIZE", -1, 0, pool));
+      break;
+    default:
+      break;
+  }
+
+  RCC(rc, finish, aws4_request_json(spec, &(struct aws4_request_json_payload) {
+    .json = n,
+    .amz_target = "DynamoDB_20120810.DeleteItem",
   }, pool, &resp->data));
 
   *rpp = resp;

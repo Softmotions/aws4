@@ -81,6 +81,41 @@ static iwrc _test_basic_comm(void) {
   return rc;
 }
 
+static iwrc _test_table_item_delete(void) {
+  iwrc rc = 0;
+  struct aws4dd_item_delete *op = 0;
+  JBL_NODE n;
+
+  RCC(rc, finish, aws4dd_item_delete_op(&op, &(struct aws4dd_item_delete_spec) {
+    .table_name = "Thread",
+    .condition_expression = "attribute_not_exists(Replies)",
+    .ret = {
+      .values = AWS4DD_RETURN_VALUES_ALL_OLD
+    }
+  }));
+  RCC(rc, finish, aws4dd_item_delete_value(op, "/Key/ForumName", "S", "Amazon DynamoDB"));
+  RCC(rc, finish, aws4dd_item_delete_value(op, "/Key/Subject", "S", "How do I update multiple items?"));
+
+  struct aws4dd_response *resp;
+  struct aws4_request_spec spec = {
+    .flags          = AWS_SERVICE_DYNAMODB,
+    .aws_region     = "us-east-1",
+    .aws_key        = "fakeMyKeyId",
+    .aws_secret_key = "fakeSecretAccessKey",
+    .aws_url        = "http://localhost:8000"
+  };
+
+  RCC(rc, finish, aws4dd_item_delete(&spec, op, &resp));
+  
+  RCC(rc, finish, jbn_at(resp->data, "/Attributes/Tags/SS/1", &n));
+  IWN_ASSERT(n->type == JBV_STR);
+  IWN_ASSERT(0 == strcmp(n->vptr, "Multiple"));
+
+finish:
+  aws4dd_item_delete_op_destroy(&op);
+  return rc;
+}
+
 static iwrc _test_table_query(void) {
   iwrc rc = 0;
   struct aws4dd_query *op = 0;
@@ -241,6 +276,7 @@ static iwrc _test_table_operations(void) {
   RCC(rc, finish, _test_table_put_item());
   RCC(rc, finish, _test_table_get_item());
   RCC(rc, finish, _test_table_query());
+  RCC(rc, finish, _test_table_item_delete());
 
   RCC(rc, finish, aws4dd_table_delete(&spec, "Thread", &resp));
   aws4dd_response_destroy(&resp);
