@@ -20,6 +20,14 @@ static int dynamodb_pid = -1;
 static struct iwn_poller *poller;
 static pthread_barrier_t start_br;
 
+static struct aws4_request_spec request_spec = {
+  .flags          = AWS_SERVICE_DYNAMODB,
+  .aws_region     = "us-east-1",
+  .aws_key        = "fakeMyKeyId",
+  .aws_secret_key = "fakeSecretAccessKey",
+  .aws_url        = "http://localhost:8000"
+};
+
 static void _on_signal(int signo) {
   if (dynamodb_pid > -1) {
     kill(dynamodb_pid, SIGTERM);
@@ -58,13 +66,7 @@ static iwrc _test_basic_comm(void) {
   iwrc rc = 0;
   char *out = 0;
 
-  rc = aws4_request_raw(&(struct aws4_request_spec) {
-    .flags = AWS_SERVICE_DYNAMODB,
-    .aws_region = "us-east-1",
-    .aws_key = "fakeMyKeyId",
-    .aws_secret_key = "fakeSecretAccessKey",
-    .aws_url = "http://localhost:8000"
-  }, &(struct aws4_request_payload) {
+  rc = aws4_request_raw(&request_spec, &(struct aws4_request_payload) {
     .payload = "{}",
     .payload_len = IW_LLEN("{}"),
     .amz_target = "DynamoDB_20120810.ListTables"
@@ -83,8 +85,9 @@ static iwrc _test_basic_comm(void) {
 
 static iwrc _test_table_item_delete(void) {
   iwrc rc = 0;
-  struct aws4dd_item_delete *op = 0;
   JBL_NODE n;
+  struct aws4dd_item_delete *op = 0;
+  struct aws4dd_response *resp = 0;
 
   RCC(rc, finish, aws4dd_item_delete_op(&op, &(struct aws4dd_item_delete_spec) {
     .table_name = "Thread",
@@ -96,30 +99,23 @@ static iwrc _test_table_item_delete(void) {
   RCC(rc, finish, aws4dd_item_delete_value(op, "/Key/ForumName", "S", "Amazon DynamoDB"));
   RCC(rc, finish, aws4dd_item_delete_value(op, "/Key/Subject", "S", "How do I update multiple items?"));
 
-  struct aws4dd_response *resp;
-  struct aws4_request_spec spec = {
-    .flags          = AWS_SERVICE_DYNAMODB,
-    .aws_region     = "us-east-1",
-    .aws_key        = "fakeMyKeyId",
-    .aws_secret_key = "fakeSecretAccessKey",
-    .aws_url        = "http://localhost:8000"
-  };
+  RCC(rc, finish, aws4dd_item_delete(&request_spec, op, &resp));
 
-  RCC(rc, finish, aws4dd_item_delete(&spec, op, &resp));
-  
   RCC(rc, finish, jbn_at(resp->data, "/Attributes/Tags/SS/1", &n));
   IWN_ASSERT(n->type == JBV_STR);
   IWN_ASSERT(0 == strcmp(n->vptr, "Multiple"));
 
 finish:
+  aws4dd_response_destroy(&resp);
   aws4dd_item_delete_op_destroy(&op);
   return rc;
 }
 
 static iwrc _test_table_query(void) {
   iwrc rc = 0;
-  struct aws4dd_query *op = 0;
   JBL_NODE n;
+  struct aws4dd_query *op = 0;
+  struct aws4dd_response *resp = 0;
 
   RCC(rc, finish, aws4dd_query_op(&op, &(struct aws4dd_query_spec) {
     .table_name = "Thread",
@@ -132,16 +128,7 @@ static iwrc _test_table_query(void) {
 
   RCC(rc, finish, aws4dd_query_value(op, "/ExpressionAttributeValues/:v1", "S", "Amazon DynamoDB"));
 
-  struct aws4dd_response *resp;
-  struct aws4_request_spec spec = {
-    .flags          = AWS_SERVICE_DYNAMODB,
-    .aws_region     = "us-east-1",
-    .aws_key        = "fakeMyKeyId",
-    .aws_secret_key = "fakeSecretAccessKey",
-    .aws_url        = "http://localhost:8000"
-  };
-
-  RCC(rc, finish, aws4dd_query(&spec, op, &resp));
+  RCC(rc, finish, aws4dd_query(&request_spec, op, &resp));
 
   // {"Items":[{"Subject":{"S":"How do I update multiple items?"}, "Tags":{"SS":["Help","Multiple","Update"]}}],
   //  "Count":1,"ScannedCount":1,"ConsumedCapacity":{"TableName":"Thread","CapacityUnits":1.0}}
@@ -156,35 +143,29 @@ static iwrc _test_table_query(void) {
   IWN_ASSERT(n->vi64 == 1);
 
 finish:
+  aws4dd_response_destroy(&resp);
   aws4dd_query_op_destroy(&op);
   return rc;
 }
 
-static iwrc _test_table_get_item(void) {
+static iwrc _test_table_item_get(void) {
   iwrc rc = 0;
   struct aws4dd_item_get *op = 0;
+  struct aws4dd_response *resp = 0;
   JBL_NODE n;
 
   RCC(rc, finish, aws4dd_item_get_op(&op, &(struct aws4dd_item_get_spec) {
     .table_name = "Thread",
     .consistent_read = true,
     .return_consumed_capacity = AWS4DD_RETURN_CONSUMED_TOTAL,
-    .projection_expression = "LastPostDateTime, Message, Tags",
+    .projection_expression = "LastPostDateTime, Message, Tags, LastPostedBy",
   }));
 
   RCC(rc, finish, aws4dd_item_get_key_value(op, "/Key/ForumName", "S", "Amazon DynamoDB"));
   RCC(rc, finish, aws4dd_item_get_key_value(op, "/Key/Subject", "S", "How do I update multiple items?"));
 
-  struct aws4dd_response *resp;
-  struct aws4_request_spec spec = {
-    .flags          = AWS_SERVICE_DYNAMODB,
-    .aws_region     = "us-east-1",
-    .aws_key        = "fakeMyKeyId",
-    .aws_secret_key = "fakeSecretAccessKey",
-    .aws_url        = "http://localhost:8000"
-  };
 
-  RCC(rc, finish, aws4dd_item_get(&spec, op, &resp));
+  RCC(rc, finish, aws4dd_item_get(&request_spec, op, &resp));
   RCC(rc, finish, jbn_at(resp->data, "/Item/Message/S", &n));
   IWN_ASSERT_FATAL(n->type == JBV_STR);
   IWN_ASSERT_FATAL(0 == strcmp(n->vptr, "I want to update multiple items in a single call."));
@@ -193,6 +174,11 @@ static iwrc _test_table_get_item(void) {
   RCC(rc, finish, jbn_at(resp->data, "/Item/Tags/SS/1", &n));
   IWN_ASSERT_FATAL(n->type == JBV_STR);
   IWN_ASSERT_FATAL(0 == strcmp(n->vptr, "Multiple"));
+
+  RCC(rc, finish, jbn_at(resp->data, "/Item/LastPostedBy/S", &n));
+  IWN_ASSERT_FATAL(n->type == JBV_STR);
+  IWN_ASSERT_FATAL(0 == strcmp(n->vptr, "alice@example.com"));
+
   RCC(rc, finish, jbn_at(resp->data, "/ConsumedCapacity/CapacityUnits", &n));
   IWN_ASSERT_FATAL(n->type == JBV_F64);
   IWN_ASSERT_FATAL(n->vf64 == 1.0);
@@ -201,13 +187,15 @@ static iwrc _test_table_get_item(void) {
   IWN_ASSERT_FATAL(0 == strcmp(n->vptr, "Thread"));
 
 finish:
+  aws4dd_response_destroy(&resp);
   aws4dd_item_get_op_destroy(&op);
   return rc;
 }
 
-static iwrc _test_table_put_item(void) {
+static iwrc _test_table_item_put(void) {
   iwrc rc = 0;
   struct aws4dd_item_put *op = 0;
+  struct aws4dd_response *resp = 0;
 
   RCC(rc, finish, aws4dd_item_put_op(&op, &(struct aws4dd_item_put_spec) {
     .table_name = "Thread",
@@ -224,19 +212,39 @@ static iwrc _test_table_put_item(void) {
   RCC(rc, finish, aws4dd_item_put_value(op, "/Item/Subject", "S", "How do I update multiple items?"));
   RCC(rc, finish, aws4dd_item_put_value(op, "/Item/LastPostedBy", "S", "fred@example.com"));
 
-  struct aws4dd_response *resp;
-  struct aws4_request_spec spec = {
-    .flags          = AWS_SERVICE_DYNAMODB,
-    .aws_region     = "us-east-1",
-    .aws_key        = "fakeMyKeyId",
-    .aws_secret_key = "fakeSecretAccessKey",
-    .aws_url        = "http://localhost:8000"
-  };
-
-  RCC(rc, finish, aws4dd_item_put(&spec, op, &resp));
+  RCC(rc, finish, aws4dd_item_put(&request_spec, op, &resp));
 
 finish:
+  aws4dd_response_destroy(&resp);
   aws4dd_item_put_op_destroy(&op);
+  return rc;
+}
+
+static iwrc _test_table_item_update(void) {
+  iwrc rc = 0;
+  struct aws4dd_item_update *op = 0;
+  struct aws4dd_response *resp = 0;
+
+  RCC(rc, finish, aws4dd_item_update_op(&op, &(struct aws4dd_item_update_spec) {
+    .table_name = "Thread",
+    .update_expression = "set LastPostedBy = :val1",
+    .condition_expression = "LastPostedBy = :val2",
+    .ret = {
+      .values = AWS4DD_RETURN_VALUES_ALL_NEW
+    }
+  }));
+
+  RCC(rc, finish, aws4dd_item_update_value(op, "/ExpressionAttributeValues/:val1", "S", "alice@example.com"));
+  RCC(rc, finish, aws4dd_item_update_value(op, "/ExpressionAttributeValues/:val2", "S", "fred@example.com"));
+
+  RCC(rc, finish, aws4dd_item_update_value(op, "/Key/ForumName", "S", "Amazon DynamoDB"));
+  RCC(rc, finish, aws4dd_item_update_value(op, "/Key/Subject", "S", "How do I update multiple items?"));
+
+  RCC(rc, finish, aws4dd_item_update(&request_spec, op, &resp));
+
+finish:
+  aws4dd_response_destroy(&resp);
+  aws4dd_item_update_op_destroy(&op);
   return rc;
 }
 
@@ -255,30 +263,23 @@ static iwrc _test_table_operations(void) {
   aws4dd_table_provisioned_throughtput(op, 5, 5);
   RCC(rc, finish, aws4dd_table_tag_add(op, "Owner", "BlueTeam"));
 
-  struct aws4dd_response *resp;
-  struct aws4_request_spec spec = {
-    .flags          = AWS_SERVICE_DYNAMODB,
-    .aws_region     = "us-east-1",
-    .aws_key        = "fakeMyKeyId",
-    .aws_secret_key = "fakeSecretAccessKey",
-    .aws_url        = "http://localhost:8000"
-  };
-
-  RCC(rc, finish, aws4dd_table_create(&spec, op, &resp));
+  struct aws4dd_response *resp = 0;
+  RCC(rc, finish, aws4dd_table_create(&request_spec, op, &resp));
   IWN_ASSERT_FATAL(rc == 0);
   IWN_ASSERT_FATAL(resp->data);
+  aws4dd_response_destroy(&resp);
   aws4dd_table_create_op_destroy(&op);
 
-  resp = 0;
-  RCC(rc, finish, aws4dd_table_describe(&spec, "Thread", &resp));
+  RCC(rc, finish, aws4dd_table_describe(&request_spec, "Thread", &resp));
   aws4dd_response_destroy(&resp);
 
-  RCC(rc, finish, _test_table_put_item());
-  RCC(rc, finish, _test_table_get_item());
+  RCC(rc, finish, _test_table_item_put());
+  RCC(rc, finish, _test_table_item_update());
+  RCC(rc, finish, _test_table_item_get());
   RCC(rc, finish, _test_table_query());
   RCC(rc, finish, _test_table_item_delete());
 
-  RCC(rc, finish, aws4dd_table_delete(&spec, "Thread", &resp));
+  RCC(rc, finish, aws4dd_table_delete(&request_spec, "Thread", &resp));
   aws4dd_response_destroy(&resp);
 
 finish:

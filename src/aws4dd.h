@@ -27,6 +27,7 @@ IW_EXPORT void aws4dd_response_destroy(struct aws4dd_response **rpp);
 struct aws4dd_table_create;
 
 /// Create CreateTable operation handler.
+/// NOTE: \c rpp must bet destroyed by aws4dd_table_create_op_destroy().
 IW_EXPORT iwrc aws4dd_table_create_op(
   struct aws4dd_table_create **rpp,
   const char                  *name,
@@ -83,23 +84,26 @@ struct aws4dd_index_spec {
 IW_EXPORT iwrc aws4dd_table_index_add(struct aws4dd_table_create *op, const struct aws4dd_index_spec *spec);
 
 /// Executes a CreateTable operation.
+/// NOTE: \c rpp must be destroyed by aws4dd_response_destroy().
 IW_EXPORT iwrc aws4dd_table_create(
   const struct aws4_request_spec *spec,
   struct aws4dd_table_create     *op,
-  struct aws4dd_response        **rp);
+  struct aws4dd_response        **rpp);
 
 /// Executes a DescribeTable operation.
+/// NOTE: \c rpp must be destroyed by aws4dd_response_destroy().
 IW_EXPORT iwrc aws4dd_table_describe(
   const struct aws4_request_spec *spec, const char *name,
-  struct aws4dd_response **rp);
+  struct aws4dd_response **rpp);
 
 /// Executes a DeleteTable operation.
+/// NOTE: \c rpp must be destroyed by aws4dd_response_destroy().
 IW_EXPORT iwrc aws4dd_table_delete(
   const struct aws4_request_spec *spec, const char *name,
   struct aws4dd_response **rpp);
 
 //
-// ItemPut
+// PutItem
 //
 
 struct aws4dd_item_put;
@@ -135,6 +139,7 @@ struct aws4dd_item_put_spec {
 };
 
 /// Creates a new ItemPut operation handler.
+/// NOTE: \c opp must be destroyed by aws4dd_item_put_op_destroy().
 IW_EXPORT iwrc aws4dd_item_put_op(struct aws4dd_item_put **opp, const struct aws4dd_item_put_spec *spec);
 
 /// Destroys ItemPut operation handler.
@@ -164,9 +169,67 @@ IW_EXPORT iwrc aws4dd_item_put_value(
 IW_EXPORT iwrc aws4dd_item_put_expression_attr_name(struct aws4dd_item_put *op, const char *key, const char *value);
 
 /// Executes an ItemPut operation.
+/// NOTE: \c rpp must be destroyed by aws4dd_response_destroy().
 IW_EXPORT iwrc aws4dd_item_put(
   const struct aws4_request_spec *spec,
   struct aws4dd_item_put         *op,
+  struct aws4dd_response        **rpp);
+
+//
+// UpdateItem
+//
+
+/// ItemUpdate operation specification.
+struct aws4dd_item_update_spec {
+  const char *table_name;
+  const char *condition_expression;
+  const char *update_expression;
+  struct {
+    aws4dd_return_values_e values;
+    aws4dd_return_consumed_capacity_e  capacity;
+    aws4dd_return_collection_metrics_e metrics;
+  } ret;
+};
+
+struct aws4dd_item_update;
+
+/// Creates a new UpdateItem operation handler.
+/// NOTE: \c opp must be destroyed by aws4dd_item_update_op_destroy().
+IW_EXPORT iwrc aws4dd_item_update_op(struct aws4dd_item_update **opp, const struct aws4dd_item_update_spec *spec);
+
+/// Destroys UpdateItem operation handler.
+IW_EXPORT void aws4dd_item_update_op_destroy(struct aws4dd_item_update **opp);
+
+/// Sets an /Key or /ExpressionAttributeValues parts to the item.
+/// Example: aws4dd_item_update_array(op, "/Key/Tags", "SS", (const char*[]) { "Update", "Multiple", "Help", 0 })
+IW_EXPORT iwrc aws4dd_item_update_array(
+  struct aws4dd_item_update *op,
+  const char                *path,
+  const char                *key,
+  const char               **vals);
+
+/// Sets an /Key or /ExpressionAttributeValues parts to the item.
+/// Example: aws4dd_item_update_value(op, "/ExpressionAttributeValues/:f", "S", "Amazon DynamoDB");
+/// Example: aws4dd_item_update_value(op, "/Key/Id", "N", "101");
+IW_EXPORT iwrc aws4dd_item_update_value(
+  struct aws4dd_item_update *op,
+  const char                *path,
+  const char                *key,
+  const char                *val);
+
+/// Add key-value pair to the given ExpressionAttributeNames part of ItemUpdate operation.
+/// @param op ItemUpdate operation
+/// @param key ExpressionAttributeNames key
+/// @param val ExpressionAttributeNames value
+IW_EXPORT iwrc aws4dd_item_update_expression_attr_name(
+  struct aws4dd_item_update *op, const char *key,
+  const char *value);
+
+/// Executes an ItemUpdate operation.
+/// NOTE: \c rpp must be destroyed by aws4dd_response_destroy().
+IW_EXPORT iwrc aws4dd_item_update(
+  const struct aws4_request_spec *spec,
+  struct aws4dd_item_update      *op,
   struct aws4dd_response        **rpp);
 
 //
@@ -184,6 +247,7 @@ struct aws4dd_item_get_spec {
 };
 
 /// Create ItemGet operation handler.
+/// NOTE: \c opp must be destroyed by aws4dd_item_get_op_destroy().
 IW_EXPORT iwrc aws4dd_item_get_op(struct aws4dd_item_get **opp, const struct aws4dd_item_get_spec *spec);
 
 /// Destroy ItemGet operation handler.
@@ -193,7 +257,6 @@ IW_EXPORT void aws4dd_item_get_op_destroy(struct aws4dd_item_get **opp);
 /// @param op ItemPut operation
 /// @param key ExpressionAttributeNames key
 /// @param val ExpressionAttributeNames value
-///
 IW_EXPORT iwrc aws4dd_item_get_expression_attr_name(struct aws4dd_item_get *op, const char *key, const char *value);
 
 /// Sets /Key/ part of ItemGet operation.
@@ -211,6 +274,7 @@ IW_EXPORT iwrc aws4dd_item_get_key_value(
   const char             *value);
 
 /// Executes ItemGet operation.
+/// NOTE: \c rpp must be destroyed by aws4dd_response_destroy().
 IW_EXPORT iwrc aws4dd_item_get(
   const struct aws4_request_spec *spec,
   struct aws4dd_item_get         *op,
@@ -244,6 +308,7 @@ struct aws4dd_query_spec {
 };
 
 /// Create Query operation handler.
+/// NOTE: \c opp must be destroyed by aws4dd_query_op_destroy().
 IW_EXPORT iwrc aws4dd_query_op(struct aws4dd_query **opp, const struct aws4dd_query_spec *spec);
 
 /// Destroy Query operation handler.
@@ -265,6 +330,7 @@ IW_EXPORT iwrc aws4dd_query_value(struct aws4dd_query *op, const char *path, con
 IW_EXPORT iwrc aws4dd_query_array(struct aws4dd_query *op, const char *path, const char *key, const char **values);
 
 /// Executes a given Query operation.
+/// NOTE: \c rpp must be destroyed by aws4dd_response_destroy().
 IW_EXPORT iwrc aws4dd_query(
   const struct aws4_request_spec *spec,
   struct aws4dd_query            *op,
@@ -287,6 +353,7 @@ struct aws4dd_item_delete_spec {
 };
 
 /// Creates a DeleteItem operation handler.
+/// NOTE: \c opp must be destroyed by aws4dd_item_delete_op_destroy().
 IW_EXPORT iwrc aws4dd_item_delete_op(struct aws4dd_item_delete **opp, const struct aws4dd_item_delete_spec *spec);
 
 /// Destroys DeleteItem operation handler.
@@ -311,6 +378,7 @@ IW_EXPORT iwrc aws4dd_item_delete_array(
   const char *key, const char **values);
 
 /// Executes DeleteItem operation.
+/// NOTE: \c rpp must be destroyed by aws4dd_response_destroy().
 IW_EXPORT iwrc aws4dd_item_delete(
   const struct aws4_request_spec *spec,
   struct aws4dd_item_delete      *op,
