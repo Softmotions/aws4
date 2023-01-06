@@ -27,12 +27,13 @@ typedef enum {
 struct aws4_request;
 
 struct aws4_request_spec {
-  const char *aws_url;        ///< If not set endpoint URL is computed as follows:
-                              ///  https://<service>.<aws_region>.amazonaws.com
-  const char *aws_region;     ///< Required.
-  const char *aws_key;        ///< Optional.
-  const char *aws_secret_key; ///< Optional.
-  unsigned    flags;          ///< AWS_SERVICE_XXX flag is required.
+  const char *aws_region;         ///< AWS region. Required if region is not specified in .aws/config.
+  const char *aws_config_profile; ///< AWS configuration profile name. Optional.
+  const char *aws_url;            ///< If not set endpoint URL is computed as follows:
+                                  ///  https://<service>.<aws_region>.amazonaws.com
+  const char *aws_key;            ///< Optional.
+  const char *aws_secret_key;     ///< Optional.
+  unsigned    flags;              ///< AWS_SERVICE_XXX flag is required.
 };
 
 struct aws4_request_payload {
