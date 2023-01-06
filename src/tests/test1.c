@@ -22,8 +22,7 @@ static pthread_barrier_t start_br;
 
 static struct aws4_request_spec request_spec = {
   .flags          = AWS_SERVICE_DYNAMODB,
-  //.aws_region     = "us-east-1",
-  .aws_config_profile = "serverless-admin",
+  .aws_region     = "us-east-1",
   .aws_key        = "fakeMyKeyId",
   .aws_secret_key = "fakeSecretAccessKey",
   .aws_url        = "http://localhost:8000"
