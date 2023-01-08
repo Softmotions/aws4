@@ -10,12 +10,10 @@
 
 #include <curl/curl.h>
 
-#define AWS_SERVICE_DYNAMODB 0x01U   ///< DynamoDB accessed
-#define AWS_SERVICE_S3       0x02U   ///< AWS S3 accessed
-#define AWS_CREDENTIALS_AUTO 0x04U   ///< Locate AWS credetials accourding to
-                                     ///  https://docs.aws.amazon.com/sdkref/latest/guide/file-location.html
-#define AWS_REQUEST_VERBOSE 0x08U
-#define AWS_SERVICE_ALL     (AWS_SERVICE_S3 | AWS_SERVICE_DYNAMODB)
+#define AWS_SERVICE_DYNAMODB 0x01U   ///< DynamoDB service accessed
+#define AWS_SERVICE_S3       0x02U   ///< AWS S3 service accessed
+#define AWS_REQUEST_VERBOSE  0x04U   ///< Turn on verbose logging for request.
+#define AWS_SERVICE_ALL      (AWS_SERVICE_S3 | AWS_SERVICE_DYNAMODB)
 
 
 typedef enum {
@@ -26,14 +24,15 @@ typedef enum {
 
 struct aws4_request;
 
+/// AWS Cloud request connection speciication.
 struct aws4_request_spec {
   const char *aws_region;         ///< AWS region. Required if region is not specified in .aws/config.
   const char *aws_config_profile; ///< AWS configuration profile name. Optional.
   const char *aws_url;            ///< If not set endpoint URL is computed as follows:
                                   ///  https://<service>.<aws_region>.amazonaws.com
-  const char *aws_key;            ///< Optional.
-  const char *aws_secret_key;     ///< Optional.
-  unsigned    flags;              ///< AWS_SERVICE_XXX flag is required.
+  const char *aws_key;            ///< AWS service access key. If not set, key is read from .aws/credentials.
+  const char *aws_secret_key;     ///< AWS service secret key. If not set, key is read from .aws/credentials.
+  unsigned    flags;              ///< AWS_SERVICE_XXX, AWS_REQUEST_XXX flag is required.
 };
 
 struct aws4_request_payload {

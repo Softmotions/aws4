@@ -248,19 +248,50 @@ finish:
   return rc;
 }
 
+static iwrc _test_table_update(void) {
+  iwrc rc = 0;
+  struct aws4dd_table_update *op = 0;
+  struct aws4dd_response *resp = 0;
+  JBL_NODE n;
+
+  RCC(rc, finish, aws4dd_table_update_op(&op, &(struct aws4dd_table_update_spec) {
+    .name = "Thread",
+    .read_capacity_units = 10,
+    .write_capacity_units = 10,
+  }));
+
+  RCC(rc, finish, aws4dd_table_update(&request_spec, op, &resp));
+
+  RCC(rc, finish, jbn_at(resp->data, "/TableDescription/ProvisionedThroughput/ReadCapacityUnits", &n));
+  IWN_ASSERT(n->type == JBV_I64);
+  IWN_ASSERT(n->vi64 == 10);
+
+  // TODO: More tests
+
+finish:
+  aws4dd_response_destroy(&resp);
+  aws4dd_table_update_op_destroy(&op);
+  return rc;
+}
+
 static iwrc _test_table_operations(void) {
   iwrc rc = 0;
   struct aws4dd_table_create *op = 0;
 
-  RCC(rc, finish, aws4dd_table_create_op(&op, "Thread", "ForumName:S", "Subject:S"));
+  RCC(rc, finish, aws4dd_table_create_op(&op, &(struct aws4dd_table_create_spec) {
+    .name = "Thread",
+    .partition_key = "ForumName:S",
+    .sort_key = "Subject:S",
+    .flags = AWS4DD_TABLE_BILLING_PROVISIONED,
+    .read_capacity_units = 5,
+    .write_capacity_units = 5
+  }));
   RCC(rc, finish, aws4dd_table_attribute_string_add(op, "LastPostDateTime"));
   RCC(rc, finish, aws4dd_table_index_add(op, &(struct aws4dd_index_spec) {
-    .local = true,
     .name = "LastPostIndex",
     .pk = "ForumName",
     .sk = "LastPostDateTime",
   }));
-  aws4dd_table_provisioned_throughtput(op, 5, 5);
   RCC(rc, finish, aws4dd_table_tag_add(op, "Owner", "BlueTeam"));
 
   struct aws4dd_response *resp = 0;
@@ -277,6 +308,7 @@ static iwrc _test_table_operations(void) {
   RCC(rc, finish, _test_table_item_update());
   RCC(rc, finish, _test_table_item_get());
   RCC(rc, finish, _test_table_query());
+  RCC(rc, finish, _test_table_update());
   RCC(rc, finish, _test_table_item_delete());
 
   RCC(rc, finish, aws4dd_table_delete(&request_spec, "Thread", &resp));

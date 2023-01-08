@@ -1,20 +1,12 @@
 #include "aws4dd.h"
 
 #include <iowow/iwjson.h>
+#include <iowow/iwarr.h>
 #include <iwnet/iwn_pairs.h>
 
 #include <errno.h>
 
 static const char* _ecodefn(locale_t, uint32_t);
-
-IW_INLINE iwrc _init(void) {
-  static bool _initialized;
-  if (__sync_bool_compare_and_swap(&_initialized, false, true)) {
-    RCR(iw_init());
-    RCR(iwlog_register_ecodefn(_ecodefn));
-  }
-  return 0;
-}
 
 void aws4dd_response_destroy(struct aws4dd_response **rpp) {
   if (rpp && *rpp) {
@@ -68,16 +60,15 @@ static iwrc _name_tag_check(const char *name) {
 }
 
 iwrc aws4dd_table_create_op(
-  struct aws4dd_table_create **rp,
-  const char                  *name,
-  const char                  *partition_key,
-  const char                  *sort_key
+  struct aws4dd_table_create           **rpp,
+  const struct aws4dd_table_create_spec *spec
   ) {
-  RCR(_init());
-  if (!rp || !partition_key) {
+  if (!rpp || !spec || !spec->name || !spec->partition_key) {
     return IW_ERROR_INVALID_ARGS;
   }
-  RCR(_name_check(name));
+
+  *rpp = 0;
+  RCR(_name_check(spec->name));
 
   iwrc rc = 0;
   IWPOOL *pool = iwpool_create_empty();
@@ -91,12 +82,17 @@ iwrc aws4dd_table_create_op(
   struct aws4dd_table_create *r;
   RCB(finish, r = iwpool_calloc(sizeof(*r), pool));
   r->pool = pool;
-  RCB(finish, r->name = iwpool_strdup2(pool, name));
-  RCB(finish, r->pk = iwpool_strdup2(pool, partition_key));
+
+  r->flags = spec->flags;
+  r->read_capacity_units = spec->read_capacity_units;
+  r->write_capacity_units = spec->write_capacity_units;
+
+  RCB(finish, r->name = iwpool_strdup2(pool, spec->name));
+  RCB(finish, r->pk = iwpool_strdup2(pool, spec->partition_key));
 
   pks = strchr(r->pk, ':');
-  if (sort_key) {
-    RCB(finish, r->sk = iwpool_strdup2(pool, sort_key));
+  if (spec->sort_key) {
+    RCB(finish, r->sk = iwpool_strdup2(pool, spec->sort_key));
     sks = strchr(r->sk, ':');
   }
 
@@ -112,38 +108,20 @@ iwrc aws4dd_table_create_op(
   } else {
     RCC(rc, finish, _name_check(r->sk));
   }
-  *rp = r;
+
+  *rpp = r;
 
 finish:
   if (rc) {
-    *rp = 0;
     iwpool_destroy(pool);
   }
   return rc;
 }
 
-void aws4dd_table_create_op_destroy(struct aws4dd_table_create **rp) {
-  if (rp && *rp) {
-    iwpool_destroy((*rp)->pool);
-    *rp = 0;
-  }
-}
-
-void aws4dd_table_flags_update(struct aws4dd_table_create *op, unsigned flags) {
-  if (op) {
-    op->flags |= flags;
-  }
-}
-
-void aws4dd_table_provisioned_throughtput(
-  struct aws4dd_table_create *op,
-  long                        read_capacity_units,
-  long                        write_capacity_units
-  ) {
-  if (op) {
-    op->read_capacity_units = read_capacity_units;
-    op->write_capacity_units = write_capacity_units;
-    op->flags = AWS4DD_TABLE_BILLING_PROVISIONED;
+void aws4dd_table_create_op_destroy(struct aws4dd_table_create **opp) {
+  if (opp && *opp) {
+    iwpool_destroy((*opp)->pool);
+    *opp = 0;
   }
 }
 
@@ -155,64 +133,63 @@ iwrc aws4dd_table_tag_add(struct aws4dd_table_create *op, const char *tag_name, 
   return iwn_pair_add_pool_all(op->pool, &op->tags, tag_name, -1, tag_value, -1);
 }
 
-static iwrc _table_attribute_add(struct aws4dd_table_create *op, const char *name, const char *type) {
-  RCR(_init());
+static iwrc _table_attribute_add(IWPOOL *pool, struct iwn_pairs *attrs, const char *name, const char *type) {
   RCR(_name_check(name));
-  if (!op || !type) {
+  if (!pool || !attrs || !type) {
     return IW_ERROR_INVALID_ARGS;
   }
-  return iwn_pair_add_pool_all(op->pool, &op->attrs, name, -1, type, -1);
+  return iwn_pair_add_pool_all(pool, attrs, name, -1, type, -1);
 }
 
 iwrc aws4dd_table_attribute_string_add(struct aws4dd_table_create *op, const char *name) {
-  return _table_attribute_add(op, name, "S");
+  return _table_attribute_add(op->pool, &op->attrs, name, "S");
 }
 
 iwrc aws4dd_table_attribute_number_add(struct aws4dd_table_create *op, const char *name) {
-  return _table_attribute_add(op, name, "N");
+  return _table_attribute_add(op->pool, &op->attrs, name, "N");
 }
 
 iwrc aws4dd_table_attribute_binary_add(struct aws4dd_table_create *op, const char *name) {
-  return _table_attribute_add(op, name, "B");
+  return _table_attribute_add(op->pool, &op->attrs, name, "B");
 }
 
-iwrc aws4dd_table_attribute_add(struct aws4dd_table_create *op, const char *spec) {
-  if (!op || !spec) {
-    return IW_ERROR_INVALID_ARGS;
-  }
-  char *sd = strdup(spec);
-  if (!sd) {
+static iwrc _table_attribute_spec_add(IWPOOL *pool, struct iwn_pairs *attrs, const char *spec) {
+  char *name = strdup(spec);
+  if (!name) {
     return iwrc_set_errno(IW_ERROR_ALLOC, errno);
   }
 
-  char *colon = strchr(sd, ':');
+  char *colon = strchr(name, ':');
   if (!colon) {
-    free(sd);
+    free(name);
     return IW_ERROR_INVALID_ARGS;
   }
   *colon = '\0';
   iwrc rc = 0;
   switch (*(colon + 1)) {
     case 'S':
-      rc = aws4dd_table_attribute_string_add(op, sd);
+      rc = _table_attribute_add(pool, attrs, name, "S");
       break;
     case 'N':
-      rc = aws4dd_table_attribute_number_add(op, sd);
+      rc = _table_attribute_add(pool, attrs, name, "N");
       break;
     case 'B':
-      rc = aws4dd_table_attribute_binary_add(op, sd);
+      rc = _table_attribute_add(pool, attrs, name, "B");
       break;
     default:
       rc = IW_ERROR_INVALID_ARGS;
       break;
   }
 
-  free(sd);
+  free(name);
   return rc;
 }
 
+iwrc aws4dd_table_attribute_add(struct aws4dd_table_create *op, const char *spec) {
+  return _table_attribute_spec_add(op->pool, &op->attrs, spec);
+}
+
 iwrc aws4dd_table_index_add(struct aws4dd_table_create *op, const struct aws4dd_index_spec *spec) {
-  RCR(_init());
   if (!op || !spec) {
     return IW_ERROR_INVALID_ARGS;
   }
@@ -221,7 +198,7 @@ iwrc aws4dd_table_index_add(struct aws4dd_table_create *op, const struct aws4dd_
 
   iwrc rc = 0;
   struct aws4dd_index_spec *ps = 0;
-  if (spec->local) {
+  if (!(spec->flags & AWS4DD_TABLE_INDEX_GLOBAL)) {
     for (int i = 0; i < sizeof(op->local_idx) / sizeof(op->local_idx[0]); ++i) {
       if (op->local_idx[i].name == 0) {
         ps = &op->local_idx[i];
@@ -239,8 +216,11 @@ iwrc aws4dd_table_index_add(struct aws4dd_table_create *op, const struct aws4dd_
   if (ps == 0) {
     return AWS4DD_ERROR_MAX_IDX_LIMIT;
   }
-  ps->local = spec->local;
-  ps->project_all = spec->project_all;
+ 
+  ps->flags = spec->flags;
+  ps->read_capacity_units = spec->read_capacity_units;
+  ps->write_capacity_units = spec->write_capacity_units;
+
   RCB(finish, ps->name = iwpool_strdup2(op->pool, spec->name));
   RCB(finish, ps->pk = iwpool_strdup2(op->pool, spec->pk));
   if (spec->sk) {
@@ -269,7 +249,6 @@ iwrc aws4dd_table_create(
     return IW_ERROR_INVALID_ARGS;
   }
   *rpp = 0;
-  RCR(_init());
   iwrc rc = 0;
 
   if (!op->pk) {
@@ -306,16 +285,10 @@ iwrc aws4dd_table_create(
     RCC(rc, finish, jbn_add_item_str(n3, "AttributeType", pair->val, pair->val_len, 0, op->pool));
   }
 
-  {
-    const char *bm = 0;
-    if (op->flags & AWS4DD_TABLE_BILLING_PROVISIONED) {
-      bm = "PROVISIONED";
-    } else if (op->flags & AWS4DD_TABLE_BILLING_PER_REQUEST) {
-      bm = "PAY_PER_REQUEST";
-    }
-    if (bm) {
-      RCC(rc, finish, jbn_add_item_str(n, "BillingMode", bm, -1, 0, op->pool));
-    }
+  if (op->flags & AWS4DD_TABLE_BILLING_PROVISIONED) {
+    RCC(rc, finish, jbn_add_item_str(n, "BillingMode", "PROVISIONED", IW_LLEN("PROVISIONED"), 0, op->pool));
+  } else if (op->flags & AWS4DD_TABLE_BILLING_PER_REQUEST) {
+    RCC(rc, finish, jbn_add_item_str(n, "BillingMode", "PAY_PER_REQUEST", IW_LLEN("PAY_PER_REQUEST"), 0, op->pool));
   }
 
   for (int t = 0; t < 2; ++t) {
@@ -352,7 +325,7 @@ iwrc aws4dd_table_create(
         RCC(rc, finish, jbn_add_item_str(n5, "KeyType", "RANGE", IW_LLEN("RANGE"), 0, op->pool));
       }
 
-      if (idx->project_all) {
+      if (idx->flags & AWS4DD_TABLE_INDEX_PROJECT_ALL) {
         RCC(rc, finish, jbn_add_item_obj(n3, "Projection", &n4, op->pool));
         RCC(rc, finish, jbn_add_item_str(n4, "ProjectionType", "ALL", IW_LLEN("ALL"), 0, op->pool));
       } else if (idx->proj && idx->proj[0]) {
@@ -365,6 +338,12 @@ iwrc aws4dd_table_create(
       } else {
         RCC(rc, finish, jbn_add_item_obj(n3, "Projection", &n4, op->pool));
         RCC(rc, finish, jbn_add_item_str(n4, "ProjectionType", "KEYS_ONLY", IW_LLEN("KEYS_ONLY"), 0, op->pool));
+      }
+
+      if (t == 0 && idx->read_capacity_units > 0 && idx->write_capacity_units > 0) {
+        RCC(rc, finish, jbn_add_item_obj(n3, "ProvisionedThroughput", &n4, op->pool));
+        RCC(rc, finish, jbn_add_item_i64(n4, "ReadCapacityUnits", idx->read_capacity_units, 0, op->pool));
+        RCC(rc, finish, jbn_add_item_i64(n4, "WriteCapacityUnits", idx->write_capacity_units, 0, op->pool));
       }
     }
   }
@@ -380,7 +359,7 @@ iwrc aws4dd_table_create(
     RCC(rc, finish, jbn_add_item_str(n3, "KeyType", "RANGE", IW_LLEN("RANGE"), 0, op->pool));
   }
 
-  if (op->flags & AWS4DD_TABLE_BILLING_PROVISIONED) {
+  if ((op->flags & AWS4DD_TABLE_BILLING_PROVISIONED) && op->read_capacity_units > 0 && op->write_capacity_units > 0) {
     RCC(rc, finish, jbn_add_item_obj(n, "ProvisionedThroughput", &n2, op->pool));
     RCC(rc, finish, jbn_add_item_i64(n2, "ReadCapacityUnits", op->read_capacity_units, 0, op->pool));
     RCC(rc, finish, jbn_add_item_i64(n2, "WriteCapacityUnits", op->write_capacity_units, 0, op->pool));
@@ -436,6 +415,293 @@ finish:
 }
 
 //
+// UpdateTable
+//
+
+struct aws4dd_table_update {
+  IWPOOL     *pool;
+  const char *name;                    ///< Table name.
+  struct iwn_pairs attrs;              ///< UpdateTable create attributes.
+  long read_capacity_units;            ///< UpdateTable read capacity units.
+  long write_capacity_units;           ///< UpdateTable write capacity units.
+  struct aws4dd_index_spec idx_create; ///< Index to create. Only one allowed.
+  const char *idx_delete;              ///< Index name to delete
+  IWULIST     idx_mod_list;            ///< Indexes to modify (struct aws4dd_index_spec)
+  unsigned    flags;
+};
+
+iwrc aws4dd_table_update_op(
+  struct aws4dd_table_update           **rpp,
+  const struct aws4dd_table_update_spec *spec
+  ) {
+  if (!rpp || !spec || !spec->name) {
+    return IW_ERROR_INVALID_ARGS;
+  }
+
+  *rpp = 0;
+  RCR(_name_check(spec->name));
+
+  iwrc rc = 0;
+  IWPOOL *pool = iwpool_create_empty();
+  if (!pool) {
+    return iwrc_set_errno(IW_ERROR_ALLOC, errno);
+  }
+
+  struct aws4dd_table_update *r;
+  RCB(finish, r = iwpool_calloc(sizeof(*r), pool));
+
+  r->pool = pool;
+  r->flags = spec->flags;
+  r->read_capacity_units = spec->read_capacity_units;
+  r->write_capacity_units = spec->write_capacity_units;
+
+  RCC(rc, finish, iwulist_init(&r->idx_mod_list, 1, sizeof(struct aws4dd_index_spec)));
+  RCB(finish, r->name = iwpool_strdup2(pool, spec->name));
+
+  *rpp = r;
+
+finish:
+  if (rc) {
+    iwpool_destroy(pool);
+  }
+  return rc;
+}
+
+void aws4dd_table_update_op_destroy(struct aws4dd_table_update **opp) {
+  if (opp && *opp) {
+    struct aws4dd_table_update *op = *opp;
+    iwulist_destroy_keep(&op->idx_mod_list);
+    iwpool_destroy(op->pool);
+    *opp = 0;
+  }
+}
+
+iwrc aws4dd_table_update_attribute_add(struct aws4dd_table_update *op, const char *spec) {
+  return _table_attribute_spec_add(op->pool, &op->attrs, spec);
+}
+
+iwrc aws4dd_table_update_attribute_string_add(struct aws4dd_table_update *op, const char *name) {
+  return _table_attribute_add(op->pool, &op->attrs, name, "S");
+}
+
+iwrc aws4dd_table_update_attribute_number_add(struct aws4dd_table_update *op, const char *name) {
+  return _table_attribute_add(op->pool, &op->attrs, name, "N");
+}
+
+iwrc aws4dd_table_update_attribute_binary_add(struct aws4dd_table_update *op, const char *name) {
+  return _table_attribute_add(op->pool, &op->attrs, name, "B");
+}
+
+iwrc aws4dd_table_update_index_create(struct aws4dd_table_update *op, const struct aws4dd_index_spec *spec) {
+  if (!op || !spec) {
+    return IW_ERROR_INVALID_ARGS;
+  }
+  RCR(_name_check(spec->name));
+  RCR(_name_check(spec->pk));
+
+  iwrc rc = 0;
+  struct aws4dd_index_spec *ps = &op->idx_create;
+
+  ps->flags = spec->flags;
+  ps->read_capacity_units = spec->read_capacity_units;
+  ps->write_capacity_units = spec->write_capacity_units;
+
+  RCB(finish, ps->name = iwpool_strdup2(op->pool, spec->name));
+  RCB(finish, ps->pk = iwpool_strdup2(op->pool, spec->pk));
+  if (spec->sk) {
+    RCB(finish, ps->sk = iwpool_strdup2(op->pool, spec->sk));
+  }
+
+  if (spec->proj) {
+    int c = 0;
+    for ( ; spec->proj[c]; ++c);
+    RCB(finish, ps->proj = iwpool_alloc(sizeof(spec->proj[0]) * (c + 1), op->pool));
+    ps->proj[c] = 0;
+    while (c-- > 0) {
+      RCB(finish, ps->proj[c] = iwpool_strdup2(op->pool, spec->proj[c]));
+    }
+  }
+
+finish:
+  return rc;
+}
+
+iwrc aws4dd_table_update_index_delete(struct aws4dd_table_update *op, const char *name) {
+  if (!op || !name) {
+    return IW_ERROR_INVALID_ARGS;
+  }
+  if (op->idx_delete) {
+    return IW_ERROR_INVALID_STATE;
+  }
+  op->idx_delete = iwpool_strdup2(op->pool, name);
+  if (!op->idx_delete) {
+    return iwrc_set_errno(IW_ERROR_ALLOC, errno);
+  }
+  return 0;
+}
+
+iwrc aws4dd_table_update(
+  const struct aws4_request_spec *spec,
+  struct aws4dd_table_update     *op,
+  struct aws4dd_response        **rpp
+  ) {
+  if (!spec || !op || !rpp) {
+    return IW_ERROR_INVALID_ARGS;
+  }
+  *rpp = 0;
+  iwrc rc = 0;
+
+  struct aws4dd_response *resp = iwpool_calloc(sizeof(*resp), op->pool);
+  if (!resp) {
+    return iwrc_set_errno(IW_ERROR_ALLOC, errno);
+  }
+
+  resp->pool = op->pool;
+  iwpool_ref(resp->pool);
+
+  JBL_NODE n, n2, n22, n3, n4, n5;
+  RCC(rc, finish, jbn_from_json("{}", &n, op->pool));
+  RCC(rc, finish, jbn_add_item_str(n, "TableName", op->name, -1, 0, op->pool));
+
+  if (op->flags & (AWS4DD_TABLE_CLASS_STANDARD | AWS4DD_TABLE_CLASS_INFREQUENT)) {
+    if (op->flags & AWS4DD_TABLE_CLASS_STANDARD) {
+      RCC(rc, finish, jbn_add_item_str(n, "TableClass", "STANDARD", IW_LLEN("STANDARD"), 0, op->pool));
+    } else if (op->flags & AWS4DD_TABLE_CLASS_INFREQUENT) {
+      RCC(rc, finish, jbn_add_item_str(n, "TableClass",
+                                       "STANDARD_INFREQUENT_ACCESS", IW_LLEN("STANDARD_INFREQUENT_ACCESS"), 0,
+                                       op->pool));
+    }
+  }
+
+  if (op->flags & AWS4DD_TABLE_BILLING_PROVISIONED) {
+    RCC(rc, finish, jbn_add_item_str(n, "BillingMode", "PROVISIONED", IW_LLEN("PROVISIONED"), 0, op->pool));
+  } else if (op->flags & AWS4DD_TABLE_BILLING_PER_REQUEST) {
+    RCC(rc, finish, jbn_add_item_str(n, "BillingMode", "PAY_PER_REQUEST", IW_LLEN("PAY_PER_REQUEST"), 0, op->pool));
+  }
+
+  if (op->read_capacity_units > 0 && op->write_capacity_units > 0) {
+    RCC(rc, finish, jbn_add_item_obj(n, "ProvisionedThroughput", &n2, op->pool));
+    RCC(rc, finish, jbn_add_item_i64(n2, "ReadCapacityUnits", op->read_capacity_units, 0, op->pool));
+    RCC(rc, finish, jbn_add_item_i64(n2, "WriteCapacityUnits", op->write_capacity_units, 0, op->pool));
+  }
+
+  if (op->flags & (AWS4DD_TABLE_STREAM_KEYS_ONLY | AWS4DD_TABLE_STREAM_NEW_IMAGE | AWS4DD_TABLE_STREAM_OLD_IMAGE)) {
+    RCC(rc, finish, jbn_add_item_obj(n, "StreamSpecification", &n2, op->pool));
+    RCC(rc, finish, jbn_add_item_bool(n2, "Enabled", true, 0, op->pool));
+    if (op->flags & AWS4DD_TABLE_STREAM_KEYS_ONLY) {
+      RCC(rc, finish, jbn_add_item_str(n2, "StreamViewType", "KEYS_ONLY", IW_LLEN("KEYS_ONLY"), 0, op->pool));
+    } else if ((op->flags & (AWS4DD_TABLE_STREAM_NEW_IMAGE | AWS4DD_TABLE_STREAM_OLD_IMAGE)) ==
+               (AWS4DD_TABLE_STREAM_NEW_IMAGE | AWS4DD_TABLE_STREAM_OLD_IMAGE)) {
+      RCC(rc, finish,
+          jbn_add_item_str(n2, "StreamViewType", "NEW_AND_OLD_IMAGES", IW_LLEN("NEW_AND_OLD_IMAGES"), 0, op->pool));
+    } else if (op->flags & AWS4DD_TABLE_STREAM_NEW_IMAGE) {
+      RCC(rc, finish, jbn_add_item_str(n2, "StreamViewType", "NEW_IMAGE", IW_LLEN("NEW_IMAGE"), 0, op->pool));
+    } else if (op->flags & AWS4DD_TABLE_STREAM_OLD_IMAGE) {
+      RCC(rc, finish, jbn_add_item_str(n2, "StreamViewType", "OLD_IMAGE", IW_LLEN("OLD_IMAGE"), 0, op->pool));
+    }
+  }
+
+  if (op->attrs.first) {
+    RCC(rc, finish, jbn_add_item_arr(n, "AttributeDefinitions", &n2, op->pool));
+    for (struct iwn_pair *pair = op->attrs.first; pair; pair = pair->next) {
+      RCC(rc, finish, jbn_add_item_obj(n2, 0, &n3, op->pool));
+      RCC(rc, finish, jbn_add_item_str(n3, "AttributeName", pair->key, pair->key_len, 0, op->pool));
+      RCC(rc, finish, jbn_add_item_str(n3, "AttributeType", pair->val, pair->val_len, 0, op->pool));
+    }
+  }
+
+  RCC(rc, finish, jbn_add_item_arr(n, "GlobalSecondaryIndexUpdates", &n22, op->pool));
+
+  if (op->idx_create.name) {
+    RCC(rc, finish, jbn_add_item_obj(n22, 0, &n2, op->pool));
+
+    struct aws4dd_index_spec *idx = &op->idx_create;
+    RCC(rc, finish, jbn_add_item_obj(n2, "Create", &n3, op->pool));
+
+    RCC(rc, finish, jbn_add_item_str(n3, "IndexName", idx->name, -1, 0, op->pool));
+    RCC(rc, finish, jbn_add_item_arr(n3, "KeySchema", &n4, op->pool));
+    RCC(rc, finish, jbn_add_item_obj(n4, 0, &n5, op->pool));
+    RCC(rc, finish, jbn_add_item_str(n5, "AttributeName", idx->pk, -1, 0, op->pool));
+    RCC(rc, finish, jbn_add_item_str(n5, "KeyType", "HASH", IW_LLEN("HASH"), 0, op->pool));
+
+    if (idx->sk) {
+      RCC(rc, finish, jbn_add_item_obj(n4, 0, &n5, op->pool));
+      RCC(rc, finish, jbn_add_item_str(n5, "AttributeName", idx->sk, -1, 0, op->pool));
+      RCC(rc, finish, jbn_add_item_str(n5, "KeyType", "RANGE", IW_LLEN("RANGE"), 0, op->pool));
+    }
+    if (idx->flags & AWS4DD_TABLE_INDEX_PROJECT_ALL) {
+      RCC(rc, finish, jbn_add_item_obj(n3, "Projection", &n4, op->pool));
+      RCC(rc, finish, jbn_add_item_str(n4, "ProjectionType", "ALL", IW_LLEN("ALL"), 0, op->pool));
+    } else if (idx->proj && idx->proj[0]) {
+      RCC(rc, finish, jbn_add_item_obj(n3, "Projection", &n4, op->pool));
+      RCC(rc, finish, jbn_add_item_str(n4, "ProjectionType", "INCLUDE", IW_LLEN("INCLUDE"), 0, op->pool));
+      RCC(rc, finish, jbn_add_item_arr(n4, "NonKeyAttributes", &n5, op->pool));
+      for (int i = 0; idx->proj[i]; ++i) {
+        RCC(rc, finish, jbn_add_item_str(n5, 0, idx->proj[i], -1, 0, op->pool));
+      }
+    } else {
+      RCC(rc, finish, jbn_add_item_obj(n3, "Projection", &n4, op->pool));
+      RCC(rc, finish, jbn_add_item_str(n4, "ProjectionType", "KEYS_ONLY", IW_LLEN("KEYS_ONLY"), 0, op->pool));
+    }
+    if (idx->read_capacity_units > 0 && idx->write_capacity_units > 0) {
+      RCC(rc, finish, jbn_add_item_obj(n3, "ProvisionedThroughput", &n4, op->pool));
+      RCC(rc, finish, jbn_add_item_i64(n4, "ReadCapacityUnits", idx->read_capacity_units, 0, op->pool));
+      RCC(rc, finish, jbn_add_item_i64(n4, "WriteCapacityUnits", idx->write_capacity_units, 0, op->pool));
+    }
+  }
+
+  if (op->idx_delete) {
+    RCC(rc, finish, jbn_add_item_obj(n22, 0, &n2, op->pool));
+    RCC(rc, finish, jbn_add_item_obj(n2, "Delete", &n3, op->pool));
+    RCC(rc, finish, jbn_add_item_str(n3, "IndexName", op->idx_delete, -1, 0, op->pool));
+  }
+
+  for (size_t i = 0, l = iwulist_length(&op->idx_mod_list); i < l; ++i) {
+    struct aws4dd_index_spec *idx = iwulist_at2(&op->idx_mod_list, i);
+    RCC(rc, finish, jbn_add_item_obj(n22, 0, &n2, op->pool));
+    RCC(rc, finish, jbn_add_item_obj(n2, "Update", &n3, op->pool));
+    RCC(rc, finish, jbn_add_item_str(n3, "IndexName", idx->name, -1, 0, op->pool));
+    RCC(rc, finish, jbn_add_item_obj(n3, "ProvisionedThroughput", &n4, op->pool));
+    RCC(rc, finish, jbn_add_item_i64(n4, "ReadCapacityUnits", idx->read_capacity_units, 0, op->pool));
+    RCC(rc, finish, jbn_add_item_i64(n4, "WriteCapacityUnits", idx->write_capacity_units, 0, op->pool));
+  }
+
+  RCC(rc, finish, aws4_request_json(spec, &(struct aws4_request_json_payload) {
+    .json = n,
+    .amz_target = "DynamoDB_20120810.UpdateTable",
+  }, op->pool, &resp->data));
+
+  *rpp = resp;
+
+finish:
+  if (rc && resp) {
+    iwpool_destroy(resp->pool);
+  }
+  return rc;
+}
+
+iwrc aws4dd_table_update_index_update(
+  struct aws4dd_table_update *op,
+  const char                 *name,
+  long                        read_capacity_units,
+  long                        write_capacity_units
+  ) {
+  if (!op || !name || read_capacity_units < 1 || write_capacity_units < 1) {
+    return IW_ERROR_INVALID_ARGS;
+  }
+  struct aws4dd_index_spec ispec = {
+    .name                 = iwpool_strdup2(op->pool, name),
+    .read_capacity_units  = read_capacity_units,
+    .write_capacity_units = write_capacity_units,
+  };
+  if (!ispec.name) {
+    return iwrc_set_errno(IW_ERROR_ALLOC, errno);
+  }
+  RCR(iwulist_push(&op->idx_mod_list, &ispec));
+  return 0;
+}
+
+//
 // DescribeTable
 //
 
@@ -445,7 +711,6 @@ iwrc aws4dd_table_describe(const struct aws4_request_spec *spec, const char *nam
   }
   *rpp = 0;
   RCR(_name_check(name));
-  RCR(_init());
   iwrc rc = 0;
 
   IWPOOL *pool = iwpool_create_empty();
@@ -482,7 +747,6 @@ iwrc aws4dd_table_delete(const struct aws4_request_spec *spec, const char *name,
   }
   *rpp = 0;
   RCR(_name_check(name));
-  RCR(_init());
   iwrc rc = 0;
 
   IWPOOL *pool = iwpool_create_empty();
@@ -664,7 +928,6 @@ iwrc aws4dd_item_put(
     return IW_ERROR_INVALID_ARGS;
   }
   *rpp = 0;
-  RCR(_init());
   iwrc rc = 0;
 
   IWPOOL *pool = op->pool;
@@ -816,7 +1079,6 @@ iwrc aws4dd_item_get(
     return IW_ERROR_INVALID_ARGS;
   }
   *rpp = 0;
-  RCR(_init());
   iwrc rc = 0;
 
   IWPOOL *pool = op->pool;
@@ -959,7 +1221,6 @@ iwrc aws4dd_query(
     return IW_ERROR_INVALID_ARGS;
   }
   *rpp = 0;
-  RCR(_init());
 
   iwrc rc = 0;
   IWPOOL *pool = op->pool;
@@ -1142,7 +1403,6 @@ iwrc aws4dd_item_update(
     return IW_ERROR_INVALID_ARGS;
   }
   *rpp = 0;
-  RCR(_init());
 
   iwrc rc = 0;
   IWPOOL *pool = op->pool;
@@ -1296,7 +1556,6 @@ iwrc aws4dd_item_delete(
     return IW_ERROR_INVALID_ARGS;
   }
   *rpp = 0;
-  RCR(_init());
 
   iwrc rc = 0;
   IWPOOL *pool = op->pool;
@@ -1355,7 +1614,6 @@ finish:
 }
 
 // TODO: Scan
-// TODO: UpdateTable
 // TODO: ListTables
 
 static const char* _ecodefn(locale_t locale, uint32_t ecode) {
@@ -1371,4 +1629,18 @@ static const char* _ecodefn(locale_t locale, uint32_t ecode) {
       return "No partition key specified (AWS4DD_ERROR_NO_PARTITION_KEY)";
   }
   return 0;
+}
+
+IW_CONSTRUCTOR void _aws4dd_init(void) {
+  static bool _initialized;
+  if (__sync_bool_compare_and_swap(&_initialized, false, true)) {
+    iwrc rc = iw_init();
+    if (rc) {
+      iwlog_ecode_error3(rc);
+    }
+    rc = iwlog_register_ecodefn(_ecodefn);
+    if (rc) {
+      iwlog_ecode_error3(rc);
+    }
+  }
 }

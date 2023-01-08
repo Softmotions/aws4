@@ -24,17 +24,6 @@
 
 #define RETRY_PAUSE 3
 
-static const char* _ecodefn(locale_t, uint32_t);
-
-IW_INLINE iwrc _init(void) {
-  static bool _initialized;
-  if (__sync_bool_compare_and_swap(&_initialized, false, true)) {
-    RCR(iw_init());
-    RCR(iwlog_register_ecodefn(_ecodefn));
-  }
-  return 0;
-}
-
 struct aws4_request {
   const char     *aws_config_profile;
   const char     *aws_key;
@@ -691,11 +680,9 @@ finish:
 }
 
 iwrc aws4_request_create(const struct aws4_request_spec *spec, struct aws4_request **out_req) {
-  RCR(_init());
   if (!out_req) {
     return IW_ERROR_INVALID_ARGS;
   }
-
   *out_req = 0;
 
   IWPOOL *pool = iwpool_create_empty();
@@ -770,7 +757,6 @@ finish:
 }
 
 iwrc aws4_request_payload_set(struct aws4_request *req, const struct aws4_request_payload *payload) {
-  RCR(_init());
   if (req->xreq.payload) {
     return IW_ERROR_INVALID_STATE;
   }
@@ -803,7 +789,6 @@ finish:
 }
 
 iwrc aws4_request_payload_json_set(struct aws4_request *req, const char *amz_target, const JBL_NODE json) {
-  RCR(_init());
   if (!req || !json) {
     return IW_ERROR_INVALID_ARGS;
   }
@@ -828,7 +813,6 @@ iwrc aws4_request_payload_json_set(struct aws4_request *req, const char *amz_tar
 }
 
 iwrc aws4_request_perform(CURL *curl, struct aws4_request *req, char **out) {
-  RCR(_init());
   if (!curl || !req || !out || !req->aws_url) {
     return IW_ERROR_INVALID_ARGS;
   }
@@ -907,7 +891,6 @@ iwrc aws4_request_raw(
   const struct aws4_request_payload *payload,
   char                             **out
   ) {
-  RCR(_init());
   if (!spec || !out) {
     return IW_ERROR_INVALID_ARGS;
   }
@@ -939,7 +922,6 @@ iwrc aws4_request_raw_json_get(
   IWPOOL                            *pool,
   JBL_NODE                          *out
   ) {
-  RCR(_init());
   if (!spec || !pool || !out) {
     return IW_ERROR_INVALID_ARGS;
   }
@@ -961,7 +943,6 @@ iwrc aws4_request_json(
   IWPOOL                                 *pool,
   JBL_NODE                               *out
   ) {
-  RCR(_init());
   if (!spec || !pool || !out || (json_payload && !json_payload->json)) {
     return IW_ERROR_INVALID_ARGS;
   }
@@ -1001,4 +982,18 @@ static const char* _ecodefn(locale_t locale, uint32_t ecode) {
       return "Failed to call AWS HTTP API endpoint (AWS4_API_REQUEST_ERROR)";
   }
   return 0;
+}
+
+IW_CONSTRUCTOR void _aws4_init(void) {
+  static bool _initialized;
+  if (__sync_bool_compare_and_swap(&_initialized, false, true)) {
+    iwrc rc = iw_init();
+    if (rc) {
+      iwlog_ecode_error3(rc);
+    } 
+    rc = iwlog_register_ecodefn(_ecodefn);
+    if (rc) {
+      iwlog_ecode_error3(rc);
+    }
+  }
 }

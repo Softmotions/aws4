@@ -26,17 +26,6 @@ IW_EXPORT void aws4dd_response_destroy(struct aws4dd_response **rpp);
 
 struct aws4dd_table_create;
 
-/// Create CreateTable operation handler.
-/// NOTE: \c rpp must bet destroyed by aws4dd_table_create_op_destroy().
-IW_EXPORT iwrc aws4dd_table_create_op(
-  struct aws4dd_table_create **rpp,
-  const char                  *name,
-  const char                  *pk,
-  const char                  *sk);
-
-/// Destroy CreateTable operation handler.
-IW_EXPORT void aws4dd_table_create_op_destroy(struct aws4dd_table_create **opp);
-
 #define AWS4DD_TABLE_BILLING_PROVISIONED 0x01U
 #define AWS4DD_TABLE_BILLING_PER_REQUEST 0x02U
 #define AWS4DD_TABLE_CLASS_STANDARD      0x04U
@@ -45,14 +34,31 @@ IW_EXPORT void aws4dd_table_create_op_destroy(struct aws4dd_table_create **opp);
 #define AWS4DD_TABLE_STREAM_NEW_IMAGE    0x20U
 #define AWS4DD_TABLE_STREAM_OLD_IMAGE    0x40U
 
-/// Sets CreateTable opration flags specified above.
-IW_EXPORT void aws4dd_table_flags_update(struct aws4dd_table_create *op, unsigned flags);
+struct aws4dd_table_create_spec {
+  const char *name;              ///< Table name
+  const char *partition_key;     ///< Partition key spec. Eg: `ForumName:S`
+  const char *sort_key;          ///< Sort key spec. Eg: `Subject:S`
+  long     read_capacity_units;  ///< Read capacity units. Makes sense only if AWS4DD_TABLE_BILLING_PROVISIONED is set.
+  long     write_capacity_units; ///< Write capacity units. Makes sense only if AWS4DD_TABLE_BILLING_PROVISIONED is set.
+  unsigned flags;                ///< AWS4DD_TABLE_XXX
+};
+
+/// Create CreateTable operation handler.
+/// NOTE: \c rpp must be destroyed by aws4dd_table_create_op_destroy().
+/// @param rpp [out] Table create operation handler.
+/// @param spec [in] Table create specification.
+IW_EXPORT iwrc aws4dd_table_create_op(
+  struct aws4dd_table_create           **rpp,
+  const struct aws4dd_table_create_spec *spec);
+
+/// Destroy CreateTable operation handler.
+IW_EXPORT void aws4dd_table_create_op_destroy(struct aws4dd_table_create **opp);
 
 /// Adds a new tag to the table.
 IW_EXPORT iwrc aws4dd_table_tag_add(struct aws4dd_table_create *op, const char *tag_name, const char *tag_value);
 
 /// Adds a new attribute to the table.
-/// Where spec is and attribute spec in the following format: `type:name`. Example: `S:myattr`.
+/// Where `spec` is and attribute spec in the following format: `type:name`. Example: `S:myattr`.
 IW_EXPORT iwrc aws4dd_table_attribute_add(struct aws4dd_table_create *op, const char *spec);
 
 /// Adds a new string attribute to the table.
@@ -64,20 +70,18 @@ IW_EXPORT iwrc aws4dd_table_attribute_number_add(struct aws4dd_table_create *op,
 /// Adds a new binary attribute to the table.
 IW_EXPORT iwrc aws4dd_table_attribute_binary_add(struct aws4dd_table_create *op, const char *name);
 
-/// Sets a provisioned throughput for the table.
-IW_EXPORT void aws4dd_table_provisioned_throughtput(
-  struct aws4dd_table_create *op,
-  long                        read_capacity_units,
-  long                        write_capacity_units);
+#define AWS4DD_TABLE_INDEX_GLOBAL      0x01U ///< If index is global.
+#define AWS4DD_TABLE_INDEX_PROJECT_ALL 0x02U ///< Include all non key attrinuted into projection.
 
 /// Table index basic specification.
 struct aws4dd_index_spec {
   const char  *name;
   const char  *pk;
   const char  *sk;
-  const char **proj; ///< Zero terminated list of attributes
-  bool project_all;  ///< Include all non key attributes into projection
-  bool local;        ///< True if index is local
+  const char **proj;             ///< Zero terminated list of attributes.
+  long     read_capacity_units;  ///< Read capacity units. Makes sense only if AWS4DD_TABLE_INDEX_PROVISIONED is set.
+  long     write_capacity_units; ///< Write capacity units. Makes sense only if AWS4DD_TABLE_INDEX_PROVISIONED is set.
+  unsigned flags;                ///< AWS4DD_TABLE_INDEX_XXX
 };
 
 /// Register a new table index.
@@ -101,6 +105,63 @@ IW_EXPORT iwrc aws4dd_table_describe(
 IW_EXPORT iwrc aws4dd_table_delete(
   const struct aws4_request_spec *spec, const char *name,
   struct aws4dd_response **rpp);
+
+//
+// UpdateTable
+//
+
+struct aws4dd_table_update;
+
+struct aws4dd_table_update_spec {
+  const char *name;              ///< Table name
+  long     read_capacity_units;  ///< Read capacity units. Makes sense only if AWS4DD_TABLE_BILLING_PROVISIONED is set.
+  long     write_capacity_units; ///< Write capacity units. Makes sense only if AWS4DD_TABLE_BILLING_PROVISIONED is set.
+  uint32_t flags;                ///< AWS4DD_TABLE_XXX
+};
+
+/// Creates an UpdateTable operation handler.
+/// NOTE: \c rpp must be destroyed by aws4dd_table_update_op_destroy().
+/// @param rpp [out] Table update operation handler.
+/// @param spec [in] Table update specification.
+IW_EXPORT iwrc aws4dd_table_update_op(
+  struct aws4dd_table_update           **rpp,
+  const struct aws4dd_table_update_spec *spec);
+
+/// Destroy UpdateTable operation handler.
+IW_EXPORT void aws4dd_table_update_op_destroy(struct aws4dd_table_update **opp);
+
+/// Adds a new attribute to the table (/AttributeDefinitions).
+/// Where `spec` is and attribute spec in the following format: `type:name`. Example: `S:myattr`.
+IW_EXPORT iwrc aws4dd_table_update_attribute_add(struct aws4dd_table_update *op, const char *spec);
+
+/// Adds a new string attribute to the table (/AttributeDefinitions).
+IW_EXPORT iwrc aws4dd_table_update_attribute_string_add(struct aws4dd_table_update *op, const char *name);
+
+/// Adds a new number attribute to the table (/AttributeDefinitions).
+IW_EXPORT iwrc aws4dd_table_update_attribute_number_add(struct aws4dd_table_update *op, const char *name);
+
+/// Adds a new binary attribute to the table (/AttributeDefinitions).
+IW_EXPORT iwrc aws4dd_table_update_attribute_binary_add(struct aws4dd_table_update *op, const char *name);
+
+/// Adds a new index to the table.
+IW_EXPORT iwrc aws4dd_table_update_index_create(struct aws4dd_table_update *op, const struct aws4dd_index_spec *spec);
+
+/// Removes an index with given \c index_name from the table.
+IW_EXPORT iwrc aws4dd_table_update_index_delete(struct aws4dd_table_update *op, const char *index_name);
+
+/// Updates a capacity units for an existing index.
+IW_EXPORT iwrc aws4dd_table_update_index_update(
+  struct aws4dd_table_update *op,
+  const char                 *index_name,
+  long                        read_capacity_units,
+  long                        write_capacity_units);
+
+/// Executes an UpdateTable operation.
+/// NOTE: \c rpp must be destroyed by aws4dd_response_destroy().
+IW_EXPORT iwrc aws4dd_table_update(
+  const struct aws4_request_spec *spec,
+  struct aws4dd_table_update     *op,
+  struct aws4dd_response        **rpp);
 
 //
 // PutItem
