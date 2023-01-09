@@ -94,17 +94,38 @@ IW_EXPORT iwrc aws4dd_table_create(
   struct aws4dd_table_create     *op,
   struct aws4dd_response        **rpp);
 
+//
+// DescribeTable
+//
+
 /// Executes a DescribeTable operation.
 /// NOTE: \c rpp must be destroyed by aws4dd_response_destroy().
 IW_EXPORT iwrc aws4dd_table_describe(
   const struct aws4_request_spec *spec, const char *name,
   struct aws4dd_response **rpp);
 
+//
+// DeleteTable
+//
+
 /// Executes a DeleteTable operation.
 /// NOTE: \c rpp must be destroyed by aws4dd_response_destroy().
 IW_EXPORT iwrc aws4dd_table_delete(
   const struct aws4_request_spec *spec, const char *name,
   struct aws4dd_response **rpp);
+
+//
+// ListTables
+//
+
+/// Executes a ListTables operation.
+/// NOTE: \c rpp must be destroyed by aws4dd_response_destroy().
+IW_EXPORT iwrc aws4dd_tables_list(
+  const struct aws4_request_spec *spec,
+  const char                     *exclusive_start_table_name,
+  uint32_t                        limit,
+  struct aws4dd_response        **rpp);
+
 
 //
 // UpdateTable

@@ -774,6 +774,53 @@ finish:
 }
 
 //
+// ListTables
+//
+
+iwrc aws4dd_tables_list(
+  const struct aws4_request_spec *spec,
+  const char                     *exclusive_start_table_name,
+  uint32_t                        limit,
+  struct aws4dd_response        **rpp
+  ) {
+  if (!spec || !rpp) {
+    return IW_ERROR_INVALID_ARGS;
+  }
+  iwrc rc = 0;
+  if (exclusive_start_table_name) {
+    RCR(_name_check(exclusive_start_table_name));
+  }
+
+  IWPOOL *pool = iwpool_create_empty();
+  RCB(finish, pool);
+
+  struct aws4dd_response *resp = iwpool_calloc(sizeof(*resp), pool);
+  RCB(finish, resp);
+  resp->pool = pool;
+
+  JBL_NODE n;
+  RCC(rc, finish, jbn_from_json("{}", &n, pool));
+  if (exclusive_start_table_name) {
+    RCC(rc, finish, jbn_add_item_str(n, "ExclusiveStartTableName", exclusive_start_table_name, -1, 0, pool));
+  }
+  if (limit) {
+    RCC(rc, finish, jbn_add_item_i64(n, "Limit", limit, 0, pool));
+  }
+  RCC(rc, finish, aws4_request_json(spec, &(struct aws4_request_json_payload) {
+    .json = n,
+    .amz_target = "DynamoDB_20120810.ListTables"
+  }, pool, &resp->data));
+
+  *rpp = resp;
+
+finish:
+  if (rc) {
+    iwpool_destroy(pool);
+  }
+  return rc;
+}
+
+//
 // PutItem
 //
 
@@ -1782,9 +1829,6 @@ finish:
   }
   return rc;
 }
-
-// TODO: Scan
-// TODO: ListTables
 
 static const char* _ecodefn(locale_t locale, uint32_t ecode) {
   if (ecode <= _AWS4DD_ERROR_START || ecode >= _AWS4DD_ERROR_END) {
