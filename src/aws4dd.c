@@ -774,6 +774,43 @@ finish:
 }
 
 //
+// TagResource
+//
+
+iwrc aws4dd_tag_resource(
+  const struct aws4_request_spec *spec,
+  const char                     *resource_arn,
+  const char                     *tag_pairs[]
+  ) {
+  if (!resource_arn || !tag_pairs) {
+    return IW_ERROR_INVALID_ARGS;
+  }
+  iwrc rc = 0;
+  IWPOOL *pool = iwpool_create_empty();
+  RCB(finish, pool);
+
+  JBL_NODE n, n2;
+  RCC(rc, finish, jbn_from_json("{}", &n, pool));
+  RCC(rc, finish, jbn_add_item_str(n, "ResourceArn", resource_arn, -1, 0, pool));
+
+  RCC(rc, finish, jbn_add_item_obj(n, "Tags", &n2, pool));
+  for (int i = 0; tag_pairs[i]; ++i) {
+    if (i % 2) {
+      RCC(rc, finish, jbn_add_item_str(n2, tag_pairs[i - 1], tag_pairs[i], -1, 0, pool));
+    }
+  }
+
+  RCC(rc, finish, aws4_request_json(spec, &(struct aws4_request_json_payload) {
+    .json = n,
+    .amz_target = "DynamoDB_20120810.TagResource"
+  }, pool, &n2));
+
+finish:
+  iwpool_destroy(pool);
+  return rc;
+}
+
+//
 // ListTables
 //
 

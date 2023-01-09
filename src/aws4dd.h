@@ -115,6 +115,26 @@ IW_EXPORT iwrc aws4dd_table_delete(
   struct aws4dd_response **rpp);
 
 //
+// TagResource
+//
+
+/// Tag a DynamoDB resource identified by \c resource_arn with given \c tag_pairs
+///
+/// Example:
+///
+///   awd4dd_tag_resource(spec,
+///                       "arn:aws:dynamodb:us-west-2:123456789012:table/Forum",
+///                       (char*[]){"tag1", "value1", "tag2", "value2", 0});
+///
+/// @param spec [in] AWS4 request specification.
+/// @param resource_arn [in] Resource ARN
+/// @param tags_pairs A zero element terminated of tag key/value pairs array.
+IW_EXPORT iwrc aws4dd_tag_resource(
+  const struct aws4_request_spec *spec,
+  const char                     *resource_arn,
+  const char                     *tag_pairs[]);
+
+//
 // ListTables
 //
 
