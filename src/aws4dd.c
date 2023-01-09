@@ -365,9 +365,9 @@ iwrc aws4dd_table_create(
     RCC(rc, finish, jbn_add_item_i64(n2, "WriteCapacityUnits", op->write_capacity_units, 0, op->pool));
   }
 
-  if (op->flags & (AWS4DD_TABLE_STREAM_KEYS_ONLY | AWS4DD_TABLE_STREAM_NEW_IMAGE | AWS4DD_TABLE_STREAM_OLD_IMAGE)) {
+  if (op->flags & AWS4DD_TABLE_STREAM_ALL) {
     RCC(rc, finish, jbn_add_item_obj(n, "StreamSpecification", &n2, op->pool));
-    RCC(rc, finish, jbn_add_item_bool(n2, "Enabled", true, 0, op->pool));
+    RCC(rc, finish, jbn_add_item_bool(n2, "StreamEnabled", !(op->flags & AWS4DD_TABLE_STREAM_DISABLED), 0, op->pool));
     if (op->flags & AWS4DD_TABLE_STREAM_KEYS_ONLY) {
       RCC(rc, finish, jbn_add_item_str(n2, "StreamViewType", "KEYS_ONLY", IW_LLEN("KEYS_ONLY"), 0, op->pool));
     } else if ((op->flags & (AWS4DD_TABLE_STREAM_NEW_IMAGE | AWS4DD_TABLE_STREAM_OLD_IMAGE)) ==
@@ -585,9 +585,9 @@ iwrc aws4dd_table_update(
     RCC(rc, finish, jbn_add_item_i64(n2, "WriteCapacityUnits", op->write_capacity_units, 0, op->pool));
   }
 
-  if (op->flags & (AWS4DD_TABLE_STREAM_KEYS_ONLY | AWS4DD_TABLE_STREAM_NEW_IMAGE | AWS4DD_TABLE_STREAM_OLD_IMAGE)) {
+  if (op->flags & AWS4DD_TABLE_STREAM_ALL) {
     RCC(rc, finish, jbn_add_item_obj(n, "StreamSpecification", &n2, op->pool));
-    RCC(rc, finish, jbn_add_item_bool(n2, "Enabled", true, 0, op->pool));
+    RCC(rc, finish, jbn_add_item_bool(n2, "StreamEnabled", !(op->flags & AWS4DD_TABLE_STREAM_DISABLED), 0, op->pool));
     if (op->flags & AWS4DD_TABLE_STREAM_KEYS_ONLY) {
       RCC(rc, finish, jbn_add_item_str(n2, "StreamViewType", "KEYS_ONLY", IW_LLEN("KEYS_ONLY"), 0, op->pool));
     } else if ((op->flags & (AWS4DD_TABLE_STREAM_NEW_IMAGE | AWS4DD_TABLE_STREAM_OLD_IMAGE)) ==

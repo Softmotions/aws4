@@ -33,6 +33,12 @@ struct aws4dd_table_create;
 #define AWS4DD_TABLE_STREAM_KEYS_ONLY    0x10U
 #define AWS4DD_TABLE_STREAM_NEW_IMAGE    0x20U
 #define AWS4DD_TABLE_STREAM_OLD_IMAGE    0x40U
+#define AWS4DD_TABLE_STREAM_DISABLED     0x80U
+#define AWS4DD_TABLE_STREAM_ALL          ( \
+    AWS4DD_TABLE_STREAM_KEYS_ONLY \
+    | AWS4DD_TABLE_STREAM_NEW_IMAGE \
+    | AWS4DD_TABLE_STREAM_OLD_IMAGE \
+    | AWS4DD_TABLE_STREAM_DISABLED)
 
 struct aws4dd_table_create_spec {
   const char *name;              ///< Table name
