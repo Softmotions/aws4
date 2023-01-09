@@ -398,6 +398,51 @@ IW_EXPORT iwrc aws4dd_query(
   struct aws4dd_response        **rpp);
 
 //
+// Scan
+//
+
+struct aws4dd_scan;
+
+struct aws4dd_scan_spec {
+  const char *table_name;                ///< Table name.
+  const char *index_name;                ///< Name of secondary index to scan.
+  const char *projection_expression;     ///< A string that identifies one or more attributes to retrieve from the
+                                         ///  specified table or index.
+  const char     *filter_expression;     ///< FilterExpression.
+  aws4dd_select_e select;                ///< Select. Default: AWS4DD_SELECT_ALL_ATTRIBUTES
+  uint32_t segments_total;               ///< Total number of segments into which scan operation is divided.
+  uint32_t segment;                      ///< Used only if segments_total specified.
+  uint32_t limit;                        ///< The maximum number of items to evaluate (not necessarily the number of
+                                         ///  matching items).
+  aws4dd_return_consumed_capacity_e
+       return_consumed_capacity; ///< ReturnConsumedCapacity.
+  bool consistent_read;          ///< ConsistentRead.
+};
+
+/// Creates a Scan operation handler.
+/// NOTE: \c opp must be destroyed by aws4dd_scan_op_destroy().
+IW_EXPORT iwrc aws4dd_scan_op(struct aws4dd_scan **opp, const struct aws4dd_scan_spec *spec);
+
+/// Destroys a Scan operation handler.
+IW_EXPORT void aws4dd_scan_op_destroy(struct aws4dd_scan **opp);
+
+/// Adds key-value pair to the given ExpressionAttributeNames part of Scan operation.
+IW_EXPORT iwrc aws4dd_scan_expression_attr_name(struct aws4dd_scan *op, const char *key, const char *value);
+
+/// Sets an /ExclusiveStartKey or /ExpressionAttributeValues parts to the item.
+/// Example: aws4dd_scan_array(op, "/ExpressionAttributeValues/:v1", "SS",
+///                             (const char*[]) { "Update", "Multiple", "Help", 0 })
+IW_EXPORT iwrc aws4dd_scan_array(struct aws4dd_scan *op, const char *path, const char *key, const char **vals);
+
+/// Sets an /ExclusiveStartKey or /ExpressionAttributeValues parts to the item.
+/// Example: aws4dd_scan_value(op, "/ExpressionAttributeValues/:v1", "S", "Amazon DynamoDB")
+IW_EXPORT iwrc aws4dd_scan_value(struct aws4dd_scan *op, const char *path, const char *key, const char *val);
+
+/// Executes a given Scan operation.
+/// NOTE: \c rpp must be destroyed by aws4dd_response_destroy).
+IW_EXPORT iwrc aws4dd_scan(const struct aws4_request_spec *spec, struct aws4dd_scan *op, struct aws4dd_response **rpp);
+
+//
 // DeleteItem
 //
 

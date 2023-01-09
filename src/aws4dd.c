@@ -216,7 +216,7 @@ iwrc aws4dd_table_index_add(struct aws4dd_table_create *op, const struct aws4dd_
   if (ps == 0) {
     return AWS4DD_ERROR_MAX_IDX_LIMIT;
   }
- 
+
   ps->flags = spec->flags;
   ps->read_capacity_units = spec->read_capacity_units;
   ps->write_capacity_units = spec->write_capacity_units;
@@ -1298,6 +1298,176 @@ iwrc aws4dd_query(
   }, pool, &resp->data));
 
   *rpp = resp;
+
+finish:
+  if (rc && resp) {
+    iwpool_destroy(resp->pool);
+  }
+  return rc;
+}
+
+//
+// Scan
+//
+
+struct aws4dd_scan {
+  IWPOOL  *pool;
+  JBL_NODE n;
+  struct aws4dd_scan_spec spec;
+};
+
+iwrc aws4dd_scan_op(struct aws4dd_scan **opp, const struct aws4dd_scan_spec *spec) {
+  iwrc rc = 0;
+  if (!opp || !spec || !spec->table_name) {
+    return IW_ERROR_INVALID_ARGS;
+  }
+
+  *opp = 0;
+
+  IWPOOL *pool = iwpool_create_empty();
+  if (!pool) {
+    return iwrc_set_errno(IW_ERROR_ALLOC, errno);
+  }
+
+  struct aws4dd_scan *op = iwpool_calloc(sizeof(*op), pool);
+  RCB(finish, op);
+  op->pool = pool;
+
+  memcpy(&op->spec, spec, sizeof(*spec));
+  RCB(finish, op->spec.table_name = iwpool_strdup2(pool, spec->table_name));
+  if (spec->index_name) {
+    RCB(finish, op->spec.index_name = iwpool_strdup2(pool, spec->index_name));
+  }
+  if (spec->projection_expression) {
+    RCB(finish, op->spec.projection_expression = iwpool_strdup2(pool, spec->projection_expression));
+  }
+  if (spec->filter_expression) {
+    RCB(finish, op->spec.filter_expression = iwpool_strdup2(pool, spec->filter_expression));
+  }
+
+  RCC(rc, finish, jbn_from_json("{}", &op->n, pool));
+  *opp = op;
+
+finish:
+  if (rc) {
+    aws4dd_scan_op_destroy(&op);
+  }
+  return rc;
+}
+
+void aws4dd_scan_op_destroy(struct aws4dd_scan **opp) {
+  if (opp && *opp) {
+    struct aws4dd_scan *op = *opp;
+    *opp = 0;
+    iwpool_destroy(op->pool);
+  }
+}
+
+iwrc aws4dd_scan_expression_attr_name(struct aws4dd_scan *op, const char *key, const char *value) {
+  if (!op || !key || !value) {
+    return IW_ERROR_INVALID_ARGS;
+  }
+  iwrc rc = 0;
+  JBL_NODE n, n2;
+
+  RCC(rc, finish, jbn_from_json("{}", &n, op->pool));
+  RCC(rc, finish, jbn_add_item_obj(n, "ExpressionAttributeNames", &n2, op->pool));
+  RCC(rc, finish, jbn_add_item_str(n2, key, value, -1, 0, op->pool));
+  RCC(rc, finish, jbn_patch_auto(op->n, n, op->pool));
+
+finish:
+  return rc;
+}
+
+iwrc aws4dd_scan_array(struct aws4dd_scan *op, const char *path, const char *key, const char **values) {
+  if (!op || !path || !key || !values) {
+    return IW_ERROR_INVALID_ARGS;
+  }
+  return _item_put(op->pool, op->n, path, key, values);
+}
+
+iwrc aws4dd_scan_value(struct aws4dd_scan *op, const char *path, const char *key, const char *val) {
+  return aws4dd_scan_array(op, path, key, (const char*[]) {});
+}
+
+iwrc aws4dd_scan(const struct aws4_request_spec *spec, struct aws4dd_scan *op, struct aws4dd_response **rpp) {
+  if (!spec || !op || !rpp) {
+    return IW_ERROR_INVALID_ARGS;
+  }
+  *rpp = 0;
+
+  iwrc rc = 0;
+  IWPOOL *pool = op->pool;
+  struct aws4dd_response *resp = iwpool_calloc(sizeof(*resp), pool);
+  RCB(finish, resp);
+
+  resp->pool = pool;
+  iwpool_ref(pool);
+
+  JBL_NODE n = op->n;
+  RCC(rc, finish, jbn_add_item_str(n, "TableName", op->spec.table_name, -1, 0, pool));
+
+  if (op->spec.index_name) {
+    RCC(rc, finish, jbn_add_item_str(n, "IndexName", op->spec.index_name, -1, 0, pool));
+  }
+
+  if (op->spec.projection_expression) {
+    RCC(rc, finish, jbn_add_item_str(n, "ProjectionExpression", op->spec.projection_expression, -1, 0, pool));
+  }
+
+  if (op->spec.filter_expression) {
+    RCC(rc, finish, jbn_add_item_str(n, "FilterExpression", op->spec.filter_expression, -1, 0, pool));
+  }
+
+  if (op->spec.limit) {
+    RCC(rc, finish, jbn_add_item_i64(n, "Limit", op->spec.limit, 0, pool));
+  }
+
+  if (op->spec.segments_total) {
+    RCC(rc, finish, jbn_add_item_i64(n, "TotalSegments", op->spec.segments_total, 0, pool));
+    RCC(rc, finish, jbn_add_item_i64(n, "Segment", op->spec.segment, 0, pool));
+  }
+
+  if (op->spec.consistent_read) {
+    RCC(rc, finish, jbn_add_item_bool(n, "ConsistentRead", true, 0, pool));
+  }
+
+  switch (op->spec.select) {
+    case AWS4DD_SELECT_ALL_ATTRIBUTES:
+      RCC(rc, finish, jbn_add_item_str(n, "Select", "ALL_ATTRIBUTES", -1, 0, pool));
+      break;
+    case AWS4DD_SELECT_ALL_PROJECTED_ATTRIBUTES:
+      RCC(rc, finish, jbn_add_item_str(n, "Select", "ALL_PROJECTED_ATTRIBUTES", -1, 0, pool));
+      break;
+    case AWS4DD_SELECT_SPECIFIC_ATTRIBUTES:
+      RCC(rc, finish, jbn_add_item_str(n, "Select", "SPECIFIC_ATTRIBUTES", -1, 0, pool));
+      break;
+    case AWS4DD_SELECT_COUNT:
+      RCC(rc, finish, jbn_add_item_str(n, "Select", "COUNT", -1, 0, pool));
+      break;
+    default:
+      break;
+  }
+
+  switch (op->spec.return_consumed_capacity) {
+    case AWS4DD_RETURN_CONSUMED_INDEXES:
+      RCC(rc, finish, jbn_add_item_str(n, "ReturnConsumedCapacity", "INDEXES", -1, 0, pool));
+      break;
+    case AWS4DD_RETURN_CONSUMED_TOTAL:
+      RCC(rc, finish, jbn_add_item_str(n, "ReturnConsumedCapacity", "TOTAL", -1, 0, pool));
+      break;
+    case AWS4DD_RETURN_CONSUMED_NONE:
+      RCC(rc, finish, jbn_add_item_str(n, "ReturnConsumedCapacity", "NONE", -1, 0, pool));
+      break;
+    default:
+      break;
+  }
+
+  RCC(rc, finish, aws4_request_json(spec, &(struct aws4_request_json_payload) {
+    .json = n,
+    .amz_target = "DynamoDB_20120810.Scan",
+  }, pool, &resp->data));
+
 
 finish:
   if (rc && resp) {
