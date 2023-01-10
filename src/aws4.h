@@ -26,6 +26,9 @@ struct aws4_request;
 
 /// AWS Cloud request connection speciication.
 struct aws4_request_spec {
+  CURL *curl;                     ///< Optional CURL handle. If specified, a caller user must
+                                  ///  release all allocated resources by `curl_easy_cleanup()` after API usage.
+                                  ///  Otherwise, a new CURL handle will be created and released AWS request routine.
   const char *aws_region;         ///< AWS region. Required if region is not specified in .aws/config.
   const char *aws_config_profile; ///< AWS configuration profile name. Optional.
   const char *aws_url;            ///< If not set endpoint URL is computed as follows:

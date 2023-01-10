@@ -899,20 +899,36 @@ iwrc aws4_request_raw(
   struct aws4_request *req = 0;
   *out = 0;
 
-  CURL *curl = curl_easy_init();
-  if (!curl) {
-    return IW_ERROR_FAIL;
+  CURL *curl;
+  if (spec->curl) {
+    curl_easy_reset(spec->curl);
+    curl = spec->curl;
+  } else {
+    curl = curl_easy_init();
+    if (!curl) {
+      return IW_ERROR_FAIL;
+    }
+  }
+
+  if (curl == spec->curl) {
+    curl_easy_reset(curl);
   }
 
   RCC(rc, finish, aws4_request_create(spec, &req));
+
   if (payload) {
     RCC(rc, finish, aws4_request_payload_set(req, payload));
   }
+
   rc = aws4_request_perform(curl, req, out);
 
 finish:
   aws4_request_destroy(&req);
-  curl_easy_cleanup(curl);
+  if (curl == spec->curl) {
+    curl_easy_reset(curl);
+  } else {
+    curl_easy_cleanup(curl);
+  }
   return rc;
 }
 
@@ -985,15 +1001,12 @@ static const char* _ecodefn(locale_t locale, uint32_t ecode) {
 }
 
 IW_CONSTRUCTOR void _aws4_init(void) {
-  static bool _initialized;
-  if (__sync_bool_compare_and_swap(&_initialized, false, true)) {
-    iwrc rc = iw_init();
-    if (rc) {
-      iwlog_ecode_error3(rc);
-    } 
-    rc = iwlog_register_ecodefn(_ecodefn);
-    if (rc) {
-      iwlog_ecode_error3(rc);
-    }
+  iwrc rc = iw_init();
+  if (rc) {
+    iwlog_ecode_error3(rc);
+  }
+  rc = iwlog_register_ecodefn(_ecodefn);
+  if (rc) {
+    iwlog_ecode_error3(rc);
   }
 }
