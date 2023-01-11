@@ -10,10 +10,17 @@
 
 #include <curl/curl.h>
 
-#define AWS_SERVICE_DYNAMODB 0x01U   ///< DynamoDB service accessed
-#define AWS_SERVICE_S3       0x02U   ///< AWS S3 service accessed
-#define AWS_REQUEST_VERBOSE  0x04U   ///< Turn on verbose logging for request.
-#define AWS_SERVICE_ALL      (AWS_SERVICE_S3 | AWS_SERVICE_DYNAMODB)
+#define AWS_SERVICE_DYNAMODB   0x01U             ///< DynamoDB service accessed
+#define AWS_SERVICE_S3         0x02U             ///< AWS S3 service accessed
+#define AWS_REQUEST_VERBOSE    0x04U             ///< Turn on verbose logging for request.
+#define AWS_REQUEST_JUST_PRINT 0x08U             ///< Do not perform an actual API request and just log a request body
+                                                 ///  string.
+#define AWS_REQUEST_ACCEPT_ANY_STATUS_CODE 0x10U ///< Accept any HTTP status code from AWS HTTP API.
+                                                 ///  If flag is set AWS API HTTP response with not OK status code
+                                                 ///  will not cause request functions to return
+                                                 // `AWS4_API_REQUEST_ERROR`
+                                                 ///  and reponse body will be parsed as JSON.
+#define AWS_SERVICE_ALL (AWS_SERVICE_S3 | AWS_SERVICE_DYNAMODB)
 
 
 typedef enum {
@@ -50,22 +57,32 @@ struct aws4_request_json_payload {
   const JBL_NODE json;
 };
 
+struct aws4_response {
+  char *payload;
+  int   status_code;
+};
+
+IW_EXPORT iwrc aws4_request_perform(CURL *curl, struct aws4_request *req, char **out, int *out_scode);
+
 IW_EXPORT iwrc aws4_request_raw(
   const struct aws4_request_spec    *spec,
   const struct aws4_request_payload *payload,
-  char                             **out);
+  char                             **out,
+  int                               *out_scode);
 
 IW_EXPORT iwrc aws4_request_raw_json_get(
   const struct aws4_request_spec    *spec,
   const struct aws4_request_payload *payload,
   IWPOOL                            *pool,
-  JBL_NODE                          *out);
+  JBL_NODE                          *out,
+  int                               *out_scode);
 
 IW_EXPORT iwrc aws4_request_json(
   const struct aws4_request_spec         *spec,
   const struct aws4_request_json_payload *payload,
   IWPOOL                                 *pool,
-  JBL_NODE                               *out);
+  JBL_NODE                               *out,
+  int                                    *out_scode);
 
 IW_EXPORT iwrc aws4_request_create(
   const struct aws4_request_spec *spec,
@@ -75,6 +92,4 @@ IW_EXPORT void aws4_request_destroy(struct aws4_request **reqp);
 
 IW_EXPORT iwrc aws4_request_payload_set(struct aws4_request *req, const struct aws4_request_payload *payload);
 
-IW_EXPORT iwrc aws4_request_payload_json_set(struct aws4_request *req, const char *amz_target, const JBL_NODE json);
-
-IW_EXPORT iwrc aws4_request_perform(CURL *curl, struct aws4_request *req, char **out);
+IW_EXPORT iwrc aws4_request_payload_json_set(struct aws4_request *req, const char *amz_target, JBL_NODE json);

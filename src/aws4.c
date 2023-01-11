@@ -474,7 +474,7 @@ static iwrc _sign(struct aws4_request *req) {
   RCC(rc, finish, iwxstr_cat(xstr2, "AWS4-HMAC-SHA256\n", IW_LLEN("AWS4-HMAC-SHA256\n")));
   RCC(rc, finish, iwxstr_printf(xstr2, "%s\n", c.datetime));
   RCC(rc, finish, iwxstr_printf(xstr2, "%s/%s/%s/aws4_request\n", c.date, req->aws_region, req->service));
-  RCC(rc, finish, iwxstr_cat(xstr2, hashx, br_sha256_SIZE * 2));
+  RCC(rc, finish, iwxstr_cat(xstr2, hashx, (size_t) br_sha256_SIZE * 2));
 
   // Calculate signing key
   iwxstr_clear(xstr);
@@ -788,7 +788,7 @@ finish:
   return rc;
 }
 
-iwrc aws4_request_payload_json_set(struct aws4_request *req, const char *amz_target, const JBL_NODE json) {
+iwrc aws4_request_payload_json_set(struct aws4_request *req, const char *amz_target, JBL_NODE json) {
   if (!req || !json) {
     return IW_ERROR_INVALID_ARGS;
   }
@@ -812,7 +812,7 @@ iwrc aws4_request_payload_json_set(struct aws4_request *req, const char *amz_tar
   return rc;
 }
 
-iwrc aws4_request_perform(CURL *curl, struct aws4_request *req, char **out) {
+iwrc aws4_request_perform(CURL *curl, struct aws4_request *req, char **out, int *out_scode) {
   if (!curl || !req || !out || !req->aws_url) {
     return IW_ERROR_INVALID_ARGS;
   }
@@ -867,11 +867,18 @@ iwrc aws4_request_perform(CURL *curl, struct aws4_request *req, char **out) {
       XCC(cc, finish, cc);
     }
     curl_easy_getinfo(curl, CURLINFO_RESPONSE_CODE, &response_code);
-    if (!(response_code >= 200 && response_code < 300)) {
-      iwlog_warn("AWS4 | HTTP request failed. Response: %ld %s %s", response_code, req->aws_url, iwxstr_ptr(xstr));
-      rc = AWS4_API_REQUEST_ERROR;
-      goto finish;
+    if (out_scode) {
+      *out_scode = response_code;
     }
+
+    if (!(req->flags & AWS_REQUEST_ACCEPT_ANY_STATUS_CODE)) {
+      if (!(response_code >= 200 && response_code < 300)) {
+        iwlog_warn("AWS4 | HTTP request failed. Response: %ld %s %s", response_code, req->aws_url, iwxstr_ptr(xstr));
+        rc = AWS4_API_REQUEST_ERROR;
+        goto finish;
+      }
+    }
+
     break;
   }
 
@@ -889,7 +896,8 @@ finish:
 iwrc aws4_request_raw(
   const struct aws4_request_spec    *spec,
   const struct aws4_request_payload *payload,
-  char                             **out
+  char                             **out,
+  int                               *out_scode
   ) {
   if (!spec || !out) {
     return IW_ERROR_INVALID_ARGS;
@@ -920,7 +928,7 @@ iwrc aws4_request_raw(
     RCC(rc, finish, aws4_request_payload_set(req, payload));
   }
 
-  rc = aws4_request_perform(curl, req, out);
+  rc = aws4_request_perform(curl, req, out, out_scode);
 
 finish:
   aws4_request_destroy(&req);
@@ -936,7 +944,8 @@ iwrc aws4_request_raw_json_get(
   const struct aws4_request_spec    *spec,
   const struct aws4_request_payload *payload,
   IWPOOL                            *pool,
-  JBL_NODE                          *out
+  JBL_NODE                          *out,
+  int                               *out_scode
   ) {
   if (!spec || !pool || !out) {
     return IW_ERROR_INVALID_ARGS;
@@ -945,7 +954,7 @@ iwrc aws4_request_raw_json_get(
   iwrc rc = 0;
   char *out_buf = 0;
 
-  RCC(rc, finish, aws4_request_raw(spec, payload, &out_buf));
+  RCC(rc, finish, aws4_request_raw(spec, payload, &out_buf, out_scode));
   RCC(rc, finish, jbn_from_json(out_buf, out, pool));
 
 finish:
@@ -957,7 +966,8 @@ iwrc aws4_request_json(
   const struct aws4_request_spec         *spec,
   const struct aws4_request_json_payload *json_payload,
   IWPOOL                                 *pool,
-  JBL_NODE                               *out
+  JBL_NODE                               *out,
+  int                                    *out_scode
   ) {
   if (!spec || !pool || !out || (json_payload && !json_payload->json)) {
     return IW_ERROR_INVALID_ARGS;
@@ -966,14 +976,16 @@ iwrc aws4_request_json(
   iwrc rc = 0;
   IWXSTR *xstr = 0;
   struct aws4_request_payload payload;
-  bool verbose = spec->flags & AWS_REQUEST_VERBOSE;
+  bool verbose = spec->flags & (AWS_REQUEST_VERBOSE | AWS_REQUEST_JUST_PRINT);
 
   if (json_payload) {
     RCB(finish, xstr = iwxstr_new());
     RCC(rc, finish, jbn_as_json(json_payload->json, jbl_xstr_json_printer, xstr, verbose ? JBL_PRINT_PRETTY : 0));
+
     if (verbose) {
       iwlog_info("aws4_request_json | payload: %s", iwxstr_ptr(xstr));
     }
+
     payload = (struct aws4_request_payload) {
       .payload = iwxstr_ptr(xstr),
       .payload_len = iwxstr_size(xstr),
@@ -982,7 +994,9 @@ iwrc aws4_request_json(
     };
   }
 
-  rc = aws4_request_raw_json_get(spec, json_payload ? &payload : 0, pool, out);
+  if (!(spec->flags & AWS_REQUEST_JUST_PRINT)) {
+    rc = aws4_request_raw_json_get(spec, json_payload ? &payload : 0, pool, out, out_scode);
+  }
 
 finish:
   iwxstr_destroy(xstr);

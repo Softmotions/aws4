@@ -1,5 +1,5 @@
 cd ./build/src/tests
-file ./test1
+file ./test2
 #set args --ssl
 
 set confirm off

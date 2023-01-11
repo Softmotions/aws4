@@ -1,0 +1,21 @@
+const key: Record<string, string> = {
+  pk: 'ticket-master',
+  sk: 'current'
+}
+
+let ticketNumber: number | BigInt = 1;
+({
+  Attributes: { ticketNumber },
+} = await client
+  .update({
+    ConditionExpression: 'attribute_exists(pk)',
+    ExpressionAttributeValues: {
+      ':ticketNumber': ticketNumber
+    },
+    Key: key,
+    ReturnValues: 'UPDATED_NEW',
+    TableName: 'my-dynamodb-table',
+    UpdateExpression: 'SET ticketNumber = ticketNumber + :ticketNumber',
+  })
+  .promise()
+);

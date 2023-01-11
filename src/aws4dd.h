@@ -4,11 +4,16 @@
 
 IW_EXTERN_C_START
 
+#define AWS4DD_RESOURCE_TABLE 0x01U
+#define AWS4DD_RESOURCE_ATTR  0x02U
+#define AWS4DD_RESOURCE_TAG   0x04U
+#define AWS4DD_RESOURCE_INDEX 0x08U
+
 typedef enum {
   _AWS4DD_ERROR_START = (IW_ERROR_START + 101000L),
-  AWS4DD_ERROR_INVALID_ENTITY_NAME, ///< Invalid table/index/attr/tag name (AWS4DD_ERROR_INVALID_ENTITY_NAME)
-  AWS4DD_ERROR_MAX_IDX_LIMIT,       ///< Number of allowed table indexes exceeds limits (AWS4DD_ERROR_MAX_IDX_LIMIT)
-  AWS4DD_ERROR_NO_PARTITION_KEY,    ///< No partition key specified (AWS4DD_ERROR_NO_PARTITION_KEY)
+  AWS4DD_ERROR_INVALID_RESOURCE_NAME, ///< Invalid table/index/attr/tag name (AWS4DD_ERROR_INVALID_RESOURCE_NAME)
+  AWS4DD_ERROR_MAX_IDX_LIMIT,         ///< Number of allowed table indexes exceeds limits (AWS4DD_ERROR_MAX_IDX_LIMIT)
+  AWS4DD_ERROR_NO_PARTITION_KEY,      ///< No partition key specified (AWS4DD_ERROR_NO_PARTITION_KEY)
   _AWS4DD_ERROR_END,
 } aws4dd_ecode_e;
 
@@ -16,9 +21,14 @@ typedef enum {
 struct aws4dd_response {
   IWPOOL  *pool;
   JBL_NODE data;
+  int      status_code;
 };
 
+/// Destroys an aws4dd operation response.
 IW_EXPORT void aws4dd_response_destroy(struct aws4dd_response **rpp);
+
+/// Returns error is given `name` cannot be used as AWS DynamoDB resource name.
+IW_EXPORT iwrc aws4dd_resource_name_check(const char *name, int resource);
 
 ///
 /// Table

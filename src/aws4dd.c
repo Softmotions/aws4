@@ -33,30 +33,37 @@ struct aws4dd_table_create {
   unsigned flags;
 };
 
-static iwrc _name_check(const char *name) {
-  if (!name) {
-    return AWS4DD_ERROR_INVALID_ENTITY_NAME;
+static iwrc _name_check(const char *name, int resource) {
+  if (!name || *name == '\0') {
+    return AWS4DD_ERROR_INVALID_RESOURCE_NAME;
   }
   unsigned long len = strlen(name);
-  if (len < 3 || len > 255) {
-    return AWS4DD_ERROR_INVALID_ENTITY_NAME;
+  if (resource == AWS4DD_RESOURCE_TAG) {
+    if (len > 128) {
+      return AWS4DD_ERROR_INVALID_RESOURCE_NAME;
+    } else {
+      return 0;
+    }
+  }
+  if (len > 255) {
+    return AWS4DD_ERROR_INVALID_RESOURCE_NAME;
+  }
+  if ((resource == AWS4DD_RESOURCE_TABLE || resource == AWS4DD_RESOURCE_INDEX) && len < 3) {
+    return AWS4DD_ERROR_INVALID_RESOURCE_NAME;
   }
   for (unsigned long i = 0; i < len; ++i) {
     if (  (name[i] < 'A' || name[i] > 'Z')
        && (name[i] < 'a' || name[i] > 'z')
        && (name[i] < '0' || name[i] > '9')
        && name[i] != '.' && name[i] != '_' && name[i] != '-') {
-      return AWS4DD_ERROR_INVALID_ENTITY_NAME;
+      return AWS4DD_ERROR_INVALID_RESOURCE_NAME;
     }
   }
   return 0;
 }
 
-static iwrc _name_tag_check(const char *name) {
-  if (!name || *name == '\0' || strlen(name) > 128) {
-    return AWS4DD_ERROR_INVALID_ENTITY_NAME;
-  }
-  return 0;
+iwrc aws4dd_resource_name_check(const char *name, int resource) {
+  return _name_check(name, resource);
 }
 
 iwrc aws4dd_table_create_op(
@@ -68,7 +75,7 @@ iwrc aws4dd_table_create_op(
   }
 
   *rpp = 0;
-  RCR(_name_check(spec->name));
+  RCR(_name_check(spec->name, AWS4DD_RESOURCE_TABLE));
 
   iwrc rc = 0;
   IWPOOL *pool = iwpool_create_empty();
@@ -100,13 +107,13 @@ iwrc aws4dd_table_create_op(
     RCC(rc, finish, aws4dd_table_attribute_add(r, r->pk));
     *pks = '\0'; // Trim up to ssemicolon
   } else {
-    RCC(rc, finish, _name_check(r->pk));
+    RCC(rc, finish, _name_check(r->pk, AWS4DD_RESOURCE_ATTR));
   }
   if (sks) {
     RCC(rc, finish, aws4dd_table_attribute_add(r, r->sk));
     *sks = '\0';
   } else {
-    RCC(rc, finish, _name_check(r->sk));
+    RCC(rc, finish, _name_check(r->sk, AWS4DD_RESOURCE_ATTR));
   }
 
   *rpp = r;
@@ -129,12 +136,12 @@ iwrc aws4dd_table_tag_add(struct aws4dd_table_create *op, const char *tag_name, 
   if (!op || !tag_value) {
     return IW_ERROR_INVALID_ARGS;
   }
-  RCR(_name_tag_check(tag_name));
+  RCR(_name_check(tag_name, AWS4DD_RESOURCE_TAG));
   return iwn_pair_add_pool_all(op->pool, &op->tags, tag_name, -1, tag_value, -1);
 }
 
 static iwrc _table_attribute_add(IWPOOL *pool, struct iwn_pairs *attrs, const char *name, const char *type) {
-  RCR(_name_check(name));
+  RCR(_name_check(name, AWS4DD_RESOURCE_ATTR));
   if (!pool || !attrs || !type) {
     return IW_ERROR_INVALID_ARGS;
   }
@@ -193,8 +200,8 @@ iwrc aws4dd_table_index_add(struct aws4dd_table_create *op, const struct aws4dd_
   if (!op || !spec) {
     return IW_ERROR_INVALID_ARGS;
   }
-  RCR(_name_check(spec->name));
-  RCR(_name_check(spec->pk));
+  RCR(_name_check(spec->name, AWS4DD_RESOURCE_INDEX));
+  RCR(_name_check(spec->pk, AWS4DD_RESOURCE_ATTR));
 
   iwrc rc = 0;
   struct aws4dd_index_spec *ps = 0;
@@ -403,7 +410,7 @@ iwrc aws4dd_table_create(
   RCC(rc, finish, aws4_request_json(spec, &(struct aws4_request_json_payload) {
     .json = n,
     .amz_target = "DynamoDB_20120810.CreateTable"
-  }, op->pool, &resp->data));
+  }, op->pool, &resp->data, &resp->status_code));
 
   *rpp = resp;
 
@@ -439,7 +446,7 @@ iwrc aws4dd_table_update_op(
   }
 
   *rpp = 0;
-  RCR(_name_check(spec->name));
+  RCR(_name_check(spec->name, AWS4DD_RESOURCE_TABLE));
 
   iwrc rc = 0;
   IWPOOL *pool = iwpool_create_empty();
@@ -496,8 +503,8 @@ iwrc aws4dd_table_update_index_create(struct aws4dd_table_update *op, const stru
   if (!op || !spec) {
     return IW_ERROR_INVALID_ARGS;
   }
-  RCR(_name_check(spec->name));
-  RCR(_name_check(spec->pk));
+  RCR(_name_check(spec->name, AWS4DD_RESOURCE_INDEX));
+  RCR(_name_check(spec->pk, AWS4DD_RESOURCE_ATTR));
 
   iwrc rc = 0;
   struct aws4dd_index_spec *ps = &op->idx_create;
@@ -669,7 +676,7 @@ iwrc aws4dd_table_update(
   RCC(rc, finish, aws4_request_json(spec, &(struct aws4_request_json_payload) {
     .json = n,
     .amz_target = "DynamoDB_20120810.UpdateTable",
-  }, op->pool, &resp->data));
+  }, op->pool, &resp->data, &resp->status_code));
 
   *rpp = resp;
 
@@ -710,7 +717,7 @@ iwrc aws4dd_table_describe(const struct aws4_request_spec *spec, const char *nam
     return IW_ERROR_INVALID_ARGS;
   }
   *rpp = 0;
-  RCR(_name_check(name));
+  RCR(_name_check(name, AWS4DD_RESOURCE_TABLE));
   iwrc rc = 0;
 
   IWPOOL *pool = iwpool_create_empty();
@@ -726,7 +733,7 @@ iwrc aws4dd_table_describe(const struct aws4_request_spec *spec, const char *nam
   RCC(rc, finish, aws4_request_json(spec, &(struct aws4_request_json_payload) {
     .json = n,
     .amz_target = "DynamoDB_20120810.DescribeTable"
-  }, pool, &resp->data));
+  }, pool, &resp->data, &resp->status_code));
 
   *rpp = resp;
 
@@ -746,7 +753,7 @@ iwrc aws4dd_table_delete(const struct aws4_request_spec *spec, const char *name,
     return IW_ERROR_INVALID_ARGS;
   }
   *rpp = 0;
-  RCR(_name_check(name));
+  RCR(_name_check(name, AWS4DD_RESOURCE_TABLE));
   iwrc rc = 0;
 
   IWPOOL *pool = iwpool_create_empty();
@@ -762,7 +769,7 @@ iwrc aws4dd_table_delete(const struct aws4_request_spec *spec, const char *name,
   RCC(rc, finish, aws4_request_json(spec, &(struct aws4_request_json_payload) {
     .json = n,
     .amz_target = "DynamoDB_20120810.DeleteTable"
-  }, pool, &resp->data));
+  }, pool, &resp->data, &resp->status_code));
 
   *rpp = resp;
 
@@ -803,7 +810,7 @@ iwrc aws4dd_tag_resource(
   RCC(rc, finish, aws4_request_json(spec, &(struct aws4_request_json_payload) {
     .json = n,
     .amz_target = "DynamoDB_20120810.TagResource"
-  }, pool, &n2));
+  }, pool, &n2, 0));
 
 finish:
   iwpool_destroy(pool);
@@ -825,7 +832,7 @@ iwrc aws4dd_tables_list(
   }
   iwrc rc = 0;
   if (exclusive_start_table_name) {
-    RCR(_name_check(exclusive_start_table_name));
+    RCR(_name_check(exclusive_start_table_name, AWS4DD_RESOURCE_TABLE));
   }
 
   IWPOOL *pool = iwpool_create_empty();
@@ -846,7 +853,7 @@ iwrc aws4dd_tables_list(
   RCC(rc, finish, aws4_request_json(spec, &(struct aws4_request_json_payload) {
     .json = n,
     .amz_target = "DynamoDB_20120810.ListTables"
-  }, pool, &resp->data));
+  }, pool, &resp->data, 0));
 
   *rpp = resp;
 
@@ -939,11 +946,11 @@ static iwrc _item_val(IWPOOL *pool, const char *key, const char **vals, JBL_NODE
     RCB(finish, n = iwpool_calloc(sizeof(*n), pool));
     RCB(finish, n->vptr = iwpool_strdup2(pool, *vals));
     n->type = JBV_STR;
-    n->vsize = strlen(n->vptr);
+    n->vsize = (int) strlen(n->vptr);
   }
 
   RCB(finish, n->key = iwpool_strdup2(pool, key));
-  n->klidx = strlen(n->key);
+  n->klidx = (int) strlen(n->key);
 
   *out = n;
 
@@ -1061,7 +1068,7 @@ iwrc aws4dd_item_put(
   RCC(rc, finish, aws4_request_json(spec, &(struct aws4_request_json_payload) {
     .json = n,
     .amz_target = "DynamoDB_20120810.PutItem"
-  }, pool, &resp->data));
+  }, pool, &resp->data, &resp->status_code));
 
   *rpp = resp;
 
@@ -1195,7 +1202,7 @@ iwrc aws4dd_item_get(
   RCC(rc, finish, aws4_request_json(spec, &(struct aws4_request_json_payload) {
     .json = n,
     .amz_target = "DynamoDB_20120810.GetItem"
-  }, pool, &resp->data));
+  }, pool, &resp->data, &resp->status_code));
 
   *rpp = resp;
 
@@ -1379,7 +1386,7 @@ iwrc aws4dd_query(
   RCC(rc, finish, aws4_request_json(spec, &(struct aws4_request_json_payload) {
     .json = n,
     .amz_target = "DynamoDB_20120810.Query",
-  }, pool, &resp->data));
+  }, pool, &resp->data, &resp->status_code));
 
   *rpp = resp;
 
@@ -1550,7 +1557,7 @@ iwrc aws4dd_scan(const struct aws4_request_spec *spec, struct aws4dd_scan *op, s
   RCC(rc, finish, aws4_request_json(spec, &(struct aws4_request_json_payload) {
     .json = n,
     .amz_target = "DynamoDB_20120810.Scan",
-  }, pool, &resp->data));
+  }, pool, &resp->data, &resp->status_code));
 
 
 finish:
@@ -1717,7 +1724,7 @@ iwrc aws4dd_item_update(
   RCC(rc, finish, aws4_request_json(spec, &(struct aws4_request_json_payload) {
     .json = n,
     .amz_target = "DynamoDB_20120810.UpdateItem",
-  }, pool, &resp->data));
+  }, pool, &resp->data, &resp->status_code));
 
   *rpp = resp;
 
@@ -1856,7 +1863,7 @@ iwrc aws4dd_item_delete(
   RCC(rc, finish, aws4_request_json(spec, &(struct aws4_request_json_payload) {
     .json = n,
     .amz_target = "DynamoDB_20120810.DeleteItem",
-  }, pool, &resp->data));
+  }, pool, &resp->data, &resp->status_code));
 
   *rpp = resp;
 
@@ -1872,8 +1879,8 @@ static const char* _ecodefn(locale_t locale, uint32_t ecode) {
     return 0;
   }
   switch (ecode) {
-    case AWS4DD_ERROR_INVALID_ENTITY_NAME:
-      return "Invalid table/index/attr name (AWS4DD_ERROR_INVALID_ENTITY_NAME)";
+  return 0;
+  return "Invalid table/index/tag/attr name (AWS4DD_ERROR_INVALID_RESOURCE_NAME)";
     case AWS4DD_ERROR_MAX_IDX_LIMIT:
       return "Number of allowed table indexes exceeds limits (AWS4DD_ERROR_MAX_IDX_LIMIT)";
     case AWS4DD_ERROR_NO_PARTITION_KEY:

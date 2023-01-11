@@ -65,13 +65,15 @@ static iwrc _dynamodb_spawn(void) {
 static iwrc _test_basic_comm(void) {
   iwrc rc = 0;
   char *out = 0;
+  int status_code = 0;
 
   rc = aws4_request_raw(&request_spec, &(struct aws4_request_payload) {
     .payload = "{}",
     .payload_len = IW_LLEN("{}"),
     .amz_target = "DynamoDB_20120810.ListTables"
-  }, &out);
+  }, &out, &status_code);
 
+  IWN_ASSERT(status_code == 200);
   IWN_ASSERT(rc == 0);
   IWN_ASSERT(out);
 
@@ -318,7 +320,7 @@ finish:
   return rc;
 }
 
-static void* _run_tests(void *d) {
+static void* _tests_run(void *d) {
   pthread_barrier_wait(&start_br);
   iwp_sleep(500); // Wait a bit to setup local dynamodb endpoint
   iwrc rc = 0;
@@ -353,7 +355,7 @@ int main(int argc, char *argv[]) {
   pthread_barrier_init(&start_br, 0, 2);
 
   pthread_t th;
-  pthread_create(&th, 0, _run_tests, 0);
+  pthread_create(&th, 0, _tests_run, 0);
 
   iwn_poller_poll(poller);
   pthread_join(th, 0);

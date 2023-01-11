@@ -1,7 +1,7 @@
 link_libraries(aws4_s)
 
 set(TEST_DATA_DIR ${CMAKE_CURRENT_BINARY_DIR})
-set(TESTS test1)
+set(TESTS test1 test2)
 
 file(
   COPY .
