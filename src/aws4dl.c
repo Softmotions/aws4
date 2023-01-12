@@ -55,6 +55,15 @@ static iwrc _lock_table_ensure(struct aws4dl_lock *lock) {
       rc = AWS4_API_REQUEST_ERROR;
       goto finish;
     }
+  } else {
+    bool ttl_enabled = false;
+    rc = aws4dd_ttl_update(&request_spec, lock_spec.table_name, "expiresAt", true, &ttl_enabled);
+    if (rc) {
+      iwlog_ecode_warn(rc, "AWS4DL | Failed to enable 'expiresAt' TTL for table '%s'", lock_spec.table_name);
+      rc = 0;
+    } else if (!ttl_enabled) {
+      iwlog_warn("AWS4DL | 'expiresAt' TTL is not enabled for table '%s'", lock_spec.table_name);
+    }
   }
 
 finish:
@@ -200,7 +209,7 @@ again:
     wp += n->vsize;
     *wp = '\0';
   } else {
-    rc = AWS4_API_REQUEST_ERROR;
+    rc = IW_ERROR_UNEXPECTED_RESPONSE;
   }
 
 finish:
@@ -268,7 +277,7 @@ iwrc aws4dl_lock_acquire(const struct aws4dl_lock_acquire_spec *acquire_spec, st
 
   RCC(rc, finish, _ticket_acquire(lock));
 
-  // TODO: 
+  // TODO:
 
   *lpp = lock;
 

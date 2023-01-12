@@ -704,18 +704,18 @@ iwrc aws4_request_create(const struct aws4_request_spec *spec, struct aws4_reque
   RCC(rc, finish, _config_load(spec, req));
 
   if (!req->aws_region) {
-    iwlog_error2("`aws_region` configuration key is not specified");
+    iwlog_error2("AWS4 | `aws_region` configuration key is not specified");
     return IW_ERROR_INVALID_ARGS;
   }
 
   if (!req->aws_key) {
-    iwlog_error2("`aws_key` configuration key is not specified");
+    iwlog_error2("AWS4 | `aws_key` configuration key is not specified");
     rc = IW_ERROR_INVALID_ARGS;
     goto finish;
   }
 
   if (!req->aws_secret_key) {
-    iwlog_error2("`aws_secret_key` configuration key is not specified");
+    iwlog_error2("AWS4 | `aws_secret_key` configuration key is not specified");
     rc = IW_ERROR_INVALID_ARGS;
     goto finish;
   }
@@ -728,7 +728,7 @@ iwrc aws4_request_create(const struct aws4_request_spec *spec, struct aws4_reque
       req->service = "dynamodb";
       break;
     default:
-      iwlog_error("Invalid AWS service specified");
+      iwlog_error("AWS4 | Invalid AWS service specified");
       rc = IW_ERROR_INVALID_ARGS;
       goto finish;
   }
@@ -742,7 +742,7 @@ iwrc aws4_request_create(const struct aws4_request_spec *spec, struct aws4_reque
     char *buf;
     RCB(finish, buf = iwpool_strdup2(pool, req->aws_url));
     if (iwn_url_parse(&req->url, buf)) {
-      iwlog_error("Failed to parse aws url: %s", req->aws_url);
+      iwlog_error("AWS4 | Failed to parse aws url: %s", req->aws_url);
       rc = IW_ERROR_INVALID_ARGS;
       goto finish;
     }
@@ -750,7 +750,7 @@ iwrc aws4_request_create(const struct aws4_request_spec *spec, struct aws4_reque
 
 finish:
   if (rc) {
-    iwlog_ecode_error3(rc);
+    iwlog_ecode_error2(rc, "AWS4 | Failed to create request");
     aws4_request_destroy(out_req);
   }
   return rc;
@@ -1017,10 +1017,10 @@ static const char* _ecodefn(locale_t locale, uint32_t ecode) {
 IW_CONSTRUCTOR void _aws4_init(void) {
   iwrc rc = iw_init();
   if (rc) {
-    iwlog_ecode_error3(rc);
+    iwlog_ecode_error(rc, "AWS4 | Failed to initialize iowow");
   }
   rc = iwlog_register_ecodefn(_ecodefn);
   if (rc) {
-    iwlog_ecode_error3(rc);
+    iwlog_ecode_error(rc, "AWS4 | Failed to register ecodefn");
   }
 }

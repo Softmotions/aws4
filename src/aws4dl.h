@@ -16,7 +16,6 @@ struct aws4dl_lock_spec {
 
 /// Distributed lock acquire specification.
 struct aws4dl_lock_acquire_spec {
-  CURL *curl;                       ///< Optional CURL handle.
   struct iwn_poller       *poller;  ///< Poller used for times. Required.
   struct aws4_request_spec request; ///< AWS connection spec.
   struct aws4dl_lock_spec  lock_spec;

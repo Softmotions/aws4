@@ -547,4 +547,17 @@ IW_EXPORT iwrc aws4dd_item_delete(
   struct aws4dd_item_delete      *op,
   struct aws4dd_response        **rpp);
 
+
+//
+// TimeToLive (TTL)
+//
+
+/// Updates TTL `enabled` state for a given `table_name` and `attribute_name`.
+IW_EXPORT iwrc aws4dd_ttl_update(
+  const struct aws4_request_spec *spec,
+  const char                     *table_name,
+  const char                     *attribute_name,
+  bool                            enabled,
+  bool                           *out_enabled);
+
 IW_EXTERN_C_END
