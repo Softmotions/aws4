@@ -16,6 +16,8 @@ Checks:    >
   -bugprone-sizeof-expression,
   -clang-analyzer-security.insecureAPI.DeprecatedOrUnsafeBufferHandling,
   -clang-analyzer-security.insecureAPI.strcpy,
-  -google-readability-todo
+  -google-readability-todo,
+  -misc-unused-parameters,
+  -performance-no-int-to-ptr,
 
 ...
