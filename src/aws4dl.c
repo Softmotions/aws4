@@ -335,25 +335,27 @@ static void _heartbeat_fn(void *d) {
   }
 
 finish:
-  // Engage next tick
-  pthread_mutex_lock(&lock->mtx);
-  if (lock->heartbeat_fd) {
-    int fd = 0;
-    iwrc rc2 = iwn_schedule2(&(struct iwn_scheduler_spec) {
-      .task_fn = _heartbeat_fn,
-      .on_cancel = _heartbeat_cancel,
-      .poller = lock->acquire_spec.poller,
-      .user_data = lock,
-      .timeout_ms = lock_spec.lock_enqueued_ttl_sec / 3,
-    }, &fd);
-    if (!rc2) {
-      lock->heartbeat_fd = fd;
-      pthread_cond_broadcast(&lock->cond);
-    } else {
-      rc = rc2;
+  if (!(lock_spec.flags & AWS4DL_FLAG_HEARTBEAT_ONCE)) {
+    // Engage next tick
+    pthread_mutex_lock(&lock->mtx);
+    if (lock->heartbeat_fd) {
+      int fd = 0;
+      iwrc rc2 = iwn_schedule2(&(struct iwn_scheduler_spec) {
+        .task_fn = _heartbeat_fn,
+        .on_cancel = _heartbeat_cancel,
+        .poller = lock->acquire_spec.poller,
+        .user_data = lock,
+        .timeout_ms = lock_spec.lock_enqueued_ttl_sec / 3,
+      }, &fd);
+      if (!rc2) {
+        lock->heartbeat_fd = fd;
+        pthread_cond_broadcast(&lock->cond);
+      } else {
+        rc = rc2;
+      }
     }
+    pthread_mutex_unlock(&lock->mtx);
   }
-  pthread_mutex_unlock(&lock->mtx);
 
 fatal:
   if (rc) {
@@ -365,6 +367,11 @@ fatal:
 }
 
 static iwrc _heartbeat_start(struct aws4dl_lock *lock) {
+  if (lock->acquire_spec.lock_spec.flags & AWS4DL_FLAG_HEARTBEAT_ONCE) {
+    _heartbeat_fn(lock);
+    return 0;
+  }
+
   iwrc rc = 0;
   pthread_mutex_lock(&lock->mtx);
   if (lock->heartbeat_fd) {
@@ -396,7 +403,7 @@ static void _lock_destroy(struct aws4dl_lock *lock) {
 }
 
 iwrc aws4dl_lock_acquire(const struct aws4dl_lock_acquire_spec *acquire_spec, struct aws4dl_lock **lpp) {
-  if (!acquire_spec || !lpp) {
+  if (!acquire_spec || !lpp || !acquire_spec->poller) {
     return IW_ERROR_INVALID_ARGS;
   }
 
@@ -455,8 +462,10 @@ iwrc aws4dl_lock_acquire(const struct aws4dl_lock_acquire_spec *acquire_spec, st
 
   RCC(rc, finish, _ticket_acquire(lock));
   RCC(rc, finish, _lock_enqueue(lock));
-  RCC(rc, finish, _heartbeat_start(lock));
 
+  if (!(lock_spec->flags & AWS4DL_FLAG_HEARTBEAT_NO)) {
+    RCC(rc, finish, _heartbeat_start(lock));
+  }
 
   // TODO:
 

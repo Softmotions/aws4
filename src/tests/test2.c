@@ -29,6 +29,7 @@ static void _on_signal(int signo) {
     kill(dynamodb_pid, SIGTERM);
   }
   if (poller) {
+    // NOLINTNEXTLINE
     iwn_poller_shutdown_request(poller);
   }
 }
@@ -63,10 +64,17 @@ static iwrc _test_lock_acquire_release(void) {
 
   struct aws4dl_lock *lock = 0;
   struct aws4dl_lock_acquire_spec spec = {
-    .request = request_spec,
+    .request   = request_spec,
+    .poller    = poller,
+    .lock_spec = {
+      .lock_enqueued_ttl_sec = 60U * 60,
+      .flags   = AWS4DL_FLAG_HEARTBEAT_ONCE,
+    }
   };
 
   RCC(rc, finish, aws4dl_lock_acquire(&spec, &lock));
+
+  sleep(1);
 
   RCC(rc, finish, aws4dl_lock_release(&lock));
 
