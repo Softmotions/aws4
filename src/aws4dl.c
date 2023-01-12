@@ -1,15 +1,24 @@
 #include "aws4dl.h"
 #include "aws4dd.h"
 
+#include <iowow/iwp.h>
+#include <iwnet/iwn_scheduler.h>
+
 #include <unistd.h>
+#include <inttypes.h>
+#include <pthread.h>
 
 #define _LF_TICKET_ITEM_CREATE 0x01U
 
 struct aws4dl_lock {
   struct aws4dl_lock_acquire_spec acquire_spec;
   IWPOOL  *pool;
-  char     ticket[40];
-  uint32_t flags; ///< `_LF_XXX` state flags
+  char     ticket[40];   ///< Acquired lock ticket.
+  uint32_t flags;        ///< `_LF_XXX` state flags
+
+  int heartbeat_fd;      ///< Poller heartbeat task file descriptor.
+  pthread_mutex_t mtx;
+  pthread_cond_t  cond;
 };
 
 static iwrc _lock_table_ensure(struct aws4dl_lock *lock) {
@@ -95,10 +104,10 @@ static iwrc _lock_table_ticket_item_ensure(struct aws4dl_lock *lock) {
     .condition_expression = condition_expression,
   }));
 
-  RCB(finish, upk = iwpool_printf(pool, "/Item/%s", lock->acquire_spec.lock_spec.pk_name));
+  RCB(finish, upk = iwpool_printf(pool, "/Item/%s", lock_spec.pk_name));
   RCC(rc, finish, aws4dd_item_put_value(op, upk, "S", "e204f236-031c-4244-9634-cdd2aaf86960"));
 
-  RCB(finish, usk = iwpool_printf(pool, "/Item/%s", lock->acquire_spec.lock_spec.sk_name));
+  RCB(finish, usk = iwpool_printf(pool, "/Item/%s", lock_spec.sk_name));
   RCC(rc, finish, aws4dd_item_put_value(op, usk, "S", "bb7a739b-8ba7-44fd-8164-fbfe9f98bd0b"));
 
   RCC(rc, finish, aws4dd_item_put_value(op, "/Item/ticketNumber", "N", "1"));
@@ -219,6 +228,173 @@ finish:
   return rc;
 }
 
+static iwrc _lock_enqueue(struct aws4dl_lock *lock) {
+  iwrc rc = 0;
+
+  struct aws4dd_response *resp = 0;
+  struct aws4dd_item_put *op = 0;
+  struct aws4_request_spec request_spec = lock->acquire_spec.request;
+  struct aws4dl_lock_spec lock_spec = lock->acquire_spec.lock_spec;
+  const char *condition_expression, *upk, *usk;
+  uint64_t time;
+
+  JBL_NODE n;
+  IWPOOL *pool = iwpool_create_empty();
+  if (!pool) {
+    return iwrc_set_errno(IW_ERROR_ALLOC, errno);
+  }
+
+  RCB(finish, condition_expression = iwpool_printf(pool, "attribute_not_exists(%s)", lock_spec.pk_name));
+
+  RCC(rc, finish, aws4dd_item_put_op(&op, &(struct aws4dd_item_put_spec) {
+    .table_name = lock_spec.table_name,
+    .condition_expression = condition_expression,
+  }));
+
+  RCB(finish, upk = iwpool_printf(pool, "/Item/%s", lock_spec.pk_name));
+  RCB(finish, usk = iwpool_printf(pool, "/Item/%s", lock_spec.sk_name));
+
+  RCC(rc, finish, aws4dd_item_put_value(op, upk, "S", lock_spec.resource_name));
+  RCC(rc, finish, aws4dd_item_put_value(op, usk, "S", lock->ticket));
+
+  RCC(rc, finish, iwp_current_time_ms(&time, false));
+  time /= 1000UL;
+  RCB(finish, upk = iwpool_printf(pool, "%" PRIu64, time));
+  time += lock_spec.lock_enqueued_ttl_sec;
+  RCB(finish, usk = iwpool_printf(pool, "%" PRIu64, time));
+
+  RCC(rc, finish, aws4dd_item_put_value(op, "/Item/createdAt", "N", upk));
+  RCC(rc, finish, aws4dd_item_put_value(op, "/Item/expiresAt", "N", usk));
+
+  RCC(rc, finish, aws4dd_item_put(&request_spec, op, &resp));
+
+finish:
+  aws4dd_item_put_op_destroy(&op);
+  aws4dd_response_destroy(&resp);
+  iwpool_destroy(pool);
+  return rc;
+}
+
+static void _heartbeat_cancel(void *d) {
+  struct aws4dl_lock *lock = d;
+  pthread_mutex_lock(&lock->mtx);
+  if (lock->heartbeat_fd) {
+    lock->heartbeat_fd = 0;
+    pthread_cond_broadcast(&lock->cond);
+  }
+  pthread_mutex_unlock(&lock->mtx);
+}
+
+static void _heartbeat_fn(void *d) {
+  iwrc rc = 0;
+  JBL_NODE n;
+  IWPOOL *pool;
+  uint64_t time;
+  const char *condition_expression, *val, *upk, *usk;
+
+  struct aws4dl_lock *lock = d;
+  struct aws4dd_response *resp = 0;
+  struct aws4dd_item_update *op = 0;
+  struct aws4dl_lock_spec lock_spec = lock->acquire_spec.lock_spec;
+  struct aws4_request_spec request_spec = lock->acquire_spec.request;
+
+  RCB(fatal, pool = iwpool_create_empty());
+  RCB(fatal, condition_expression = iwpool_printf(pool, "attribute_exists(%s)", lock_spec.pk_name));
+
+  RCC(rc, fatal, aws4dd_item_update_op(&op, &(struct aws4dd_item_update_spec) {
+    .table_name = lock_spec.table_name,
+    .condition_expression = condition_expression,
+    .update_expression = "SET expiresAt = :expiresAt",
+  }));
+
+  RCC(rc, fatal, iwp_current_time_ms(&time, false));
+  time /= 1000UL;
+  time += lock_spec.lock_enqueued_ttl_sec;
+  RCB(fatal, val = iwpool_printf(pool, "%" PRIu64, time));
+  RCC(rc, fatal, aws4dd_item_update_value(op, "/ExpressionAttributeValues/:expiresAt", "N", val));
+
+  RCB(fatal, upk = iwpool_printf(pool, "/Key/%s", lock_spec.pk_name));
+  RCB(fatal, usk = iwpool_printf(pool, "/Key/%s", lock_spec.sk_name));
+
+  RCC(rc, fatal, aws4dd_item_update_value(op, upk, "S", lock_spec.resource_name));
+  RCC(rc, fatal, aws4dd_item_update_value(op, usk, "S", lock->ticket));
+
+  request_spec.flags |= AWS_REQUEST_ACCEPT_ANY_STATUS_CODE;
+  RCC(rc, finish, aws4dd_item_update(&request_spec, op, &resp));
+
+  switch (resp->status_code) {
+    case 400:
+      RCC(rc, fatal, jbn_at(resp->data, "/__type", &n));
+      if (  n->type != JBV_STR
+         || strcmp(n->vptr, "com.amazonaws.dynamodb.v20120810#ConditionalCheckFailedException") != 0) {
+        goto fatal; /// Record doesn't exists.
+      }
+      break;
+    default:
+      break;
+  }
+
+finish:
+  // Engage next tick
+  pthread_mutex_lock(&lock->mtx);
+  if (lock->heartbeat_fd) {
+    int fd = 0;
+    iwrc rc2 = iwn_schedule2(&(struct iwn_scheduler_spec) {
+      .task_fn = _heartbeat_fn,
+      .on_cancel = _heartbeat_cancel,
+      .poller = lock->acquire_spec.poller,
+      .user_data = lock,
+      .timeout_ms = lock_spec.lock_enqueued_ttl_sec / 3,
+    }, &fd);
+    if (!rc2) {
+      lock->heartbeat_fd = fd;
+      pthread_cond_broadcast(&lock->cond);
+    } else {
+      rc = rc2;
+    }
+  }
+  pthread_mutex_unlock(&lock->mtx);
+
+fatal:
+  if (rc) {
+    iwlog_ecode_warn2(rc, "AWS4DL | Lock heartbeat request failed");
+  }
+  aws4dd_item_update_op_destroy(&op);
+  aws4dd_response_destroy(&resp);
+  iwpool_destroy(pool);
+}
+
+static iwrc _heartbeat_start(struct aws4dl_lock *lock) {
+  iwrc rc = 0;
+  pthread_mutex_lock(&lock->mtx);
+  if (lock->heartbeat_fd) {
+    rc = IW_ERROR_INVALID_STATE;
+    goto finish;
+  }
+
+  RCC(rc, finish, iwn_schedule2(&(struct iwn_scheduler_spec) {
+    .task_fn = _heartbeat_fn,
+    .on_cancel = _heartbeat_cancel,
+    .poller = lock->acquire_spec.poller,
+    .user_data = lock,
+    .timeout_ms = lock->acquire_spec.lock_spec.lock_enqueued_ttl_sec / 3,
+  }, &lock->heartbeat_fd));
+
+finish:
+  pthread_mutex_unlock(&lock->mtx);
+  return rc;
+}
+
+static void _lock_destroy(struct aws4dl_lock *lock) {
+  if (!lock) {
+    return;
+  }
+  // TODO: Stop heartbeat
+  pthread_cond_destroy(&lock->cond);
+  pthread_mutex_destroy(&lock->mtx);
+  iwpool_destroy(lock->pool);
+}
+
 iwrc aws4dl_lock_acquire(const struct aws4dl_lock_acquire_spec *acquire_spec, struct aws4dl_lock **lpp) {
   if (!acquire_spec || !lpp) {
     return IW_ERROR_INVALID_ARGS;
@@ -232,6 +408,8 @@ iwrc aws4dl_lock_acquire(const struct aws4dl_lock_acquire_spec *acquire_spec, st
 
   struct aws4dl_lock *lock;
   RCB(finish, lock = iwpool_calloc(sizeof(*lock), pool));
+  pthread_mutex_init(&lock->mtx, 0);
+  pthread_cond_init(&lock->cond, 0);
   lock->pool = pool;
   memcpy(&lock->acquire_spec, acquire_spec, sizeof(*acquire_spec));
 
@@ -276,6 +454,9 @@ iwrc aws4dl_lock_acquire(const struct aws4dl_lock_acquire_spec *acquire_spec, st
   }
 
   RCC(rc, finish, _ticket_acquire(lock));
+  RCC(rc, finish, _lock_enqueue(lock));
+  RCC(rc, finish, _heartbeat_start(lock));
+
 
   // TODO:
 
@@ -283,7 +464,11 @@ iwrc aws4dl_lock_acquire(const struct aws4dl_lock_acquire_spec *acquire_spec, st
 
 finish:
   if (rc) {
-    iwpool_destroy(pool);
+    if (lock && lock->pool) {
+      _lock_destroy(lock);
+    } else {
+      iwpool_destroy(pool);
+    }
   }
   return rc;
 }
@@ -293,11 +478,11 @@ iwrc aws4dl_lock_release(struct aws4dl_lock **lpp) {
     return IW_ERROR_INVALID_ARGS;
   }
   iwrc rc = 0;
-  struct aws4dl_lock *lp = *lpp;
+  struct aws4dl_lock *lock = *lpp;
 
   // TODO:
 
   *lpp = 0;
-  iwpool_destroy(lp->pool);
+  _lock_destroy(lock);
   return rc;
 }

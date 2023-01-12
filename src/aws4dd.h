@@ -150,6 +150,21 @@ IW_EXPORT iwrc aws4dd_tag_resource(
   const char                     *resource_arn,
   const char                     *tag_pairs[]);
 
+
+//
+// UntagResource
+//
+
+// TODO:
+
+
+//
+// BatchWriteItem
+//
+
+// TODO:
+
+
 //
 // ListTables
 //
