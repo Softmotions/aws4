@@ -1,4 +1,1 @@
-{"TableName": "aws4dl", "Item": {"pk": {"S": "resource"}, "sk": {"S": "/00000000000000000000000000000000000002"}, "createdAt": {"N": "1673550867"}, "expiresAt": {"N": "1673550927"}}, "ConditionExpression": "attribute_not_exists(pk)"}
-
-
 

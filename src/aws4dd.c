@@ -789,7 +789,7 @@ iwrc aws4dd_tag_resource(
   const char                     *resource_arn,
   const char                     *tag_pairs[]
   ) {
-  if (!resource_arn || !tag_pairs) {
+  if (!spec || !resource_arn || !tag_pairs) {
     return IW_ERROR_INVALID_ARGS;
   }
   iwrc rc = 0;
@@ -811,6 +811,42 @@ iwrc aws4dd_tag_resource(
     .json = n,
     .amz_target = "DynamoDB_20120810.TagResource"
   }, pool, &n2, 0));
+
+finish:
+  iwpool_destroy(pool);
+  return rc;
+}
+
+//
+// UntagResource
+//
+
+iwrc aws4dd_untag_resource(
+  const struct aws4_request_spec *spec,
+  const char                     *resource_arn,
+  const char                     *tag_keys[]
+  ) {
+  if (!spec || !resource_arn || !tag_keys) {
+    return IW_ERROR_INVALID_ARGS;
+  }
+  iwrc rc = 0;
+  IWPOOL *pool = iwpool_create_empty();
+  RCB(finish, pool);
+
+  JBL_NODE n, n2;
+  RCC(rc, finish, jbn_from_json("{}", &n, pool));
+  RCC(rc, finish, jbn_add_item_str(n, "ResourceArn", resource_arn, -1, 0, pool));
+
+  RCC(rc, finish, jbn_add_item_arr(n, "TagKeys", &n2, pool));
+  for (int i = 0; tag_keys[i]; ++i) {
+    RCC(rc, finish, jbn_add_item_str(n2, 0, tag_keys[i], -1, 0, pool));
+  }
+
+  RCC(rc, finish, aws4_request_json(spec, &(struct aws4_request_json_payload) {
+    .json = n,
+    .amz_target = "DynamoDB_20120810.UntagResource"
+  }, pool, &n2, 0));
+
 
 finish:
   iwpool_destroy(pool);
@@ -1048,7 +1084,6 @@ iwrc aws4dd_item_put(
     case AWS4DD_RETURN_COLLECTION_SIZE:
       RCC(rc, finish, jbn_add_item_str(n, "ReturnItemCollectionMetrics", "SIZE", IW_LLEN("SIZE"), 0, pool));
       break;
-    case AWS4DD_RETURN_COLLECTION_NONE:
     default:
       break;
   }
@@ -1703,9 +1738,8 @@ iwrc aws4dd_item_update(
 
   switch (op->spec.ret.metrics) {
     case AWS4DD_RETURN_COLLECTION_SIZE:
-      RCC(rc, finish, jbn_add_item_str(n, "ReturnItemCollectionMetrics", "SIZE", IW_LLEN("SIZE"), 0, pool));
+      RCC(rc, finish, jbn_add_item_str(n, "ReturnItemCollectionMetrics", "SIZE", -1, 0, pool));
       break;
-    case AWS4DD_RETURN_COLLECTION_NONE:
     default:
       break;
   }
@@ -1724,6 +1758,156 @@ iwrc aws4dd_item_update(
   RCC(rc, finish, aws4_request_json(spec, &(struct aws4_request_json_payload) {
     .json = n,
     .amz_target = "DynamoDB_20120810.UpdateItem",
+  }, pool, &resp->data, &resp->status_code));
+
+  *rpp = resp;
+
+finish:
+  if (rc && resp) {
+    iwpool_destroy(resp->pool);
+  }
+  return rc;
+}
+
+//
+// BatchWriteItem
+//
+
+struct aws4dd_batch_write {
+  IWPOOL *pool;
+  struct aws4dd_batch_write_spec spec;
+  JBL_NODE n;
+};
+
+iwrc aws4dd_batch_write_op(
+  struct aws4dd_batch_write           **opp,
+  const struct aws4dd_batch_write_spec *spec
+  ) {
+  iwrc rc = 0;
+  if (!opp || !spec) {
+    return IW_ERROR_INVALID_ARGS;
+  }
+
+  *opp = 0;
+
+  IWPOOL *pool = iwpool_create_empty();
+  if (pool) {
+    return iwrc_set_errno(IW_ERROR_ALLOC, errno);
+  }
+
+  struct aws4dd_batch_write *op = iwpool_calloc(sizeof(*op), pool);
+  RCB(finish, op);
+  op->pool = pool;
+
+  memcpy(&op->spec, spec, sizeof(*spec));
+
+  RCC(rc, finish, jbn_from_json("{}", &op->n, pool));
+
+  *opp = op;
+
+finish:
+  if (rc) {
+    iwpool_destroy(pool);
+  }
+  return rc;
+}
+
+void aws4dd_batch_write_op_destroy(struct aws4dd_batch_write **opp) {
+  if (opp && *opp) {
+    iwpool_destroy((*opp)->pool);
+    *opp = 0;
+  }
+}
+
+iwrc aws4dd_batch_write_array(
+  struct aws4dd_item_update *op,
+  const char                *table,
+  const char                *path,
+  const char                *key,
+  const char               **vals
+  ) {
+  if (!op || !table || !path || !key || !vals) {
+    return IW_ERROR_INVALID_ARGS;
+  }
+  RCR(_name_check(table, AWS4DD_RESOURCE_TABLE));
+  if (*path != '/') {
+    return IW_ERROR_INVALID_ARGS;
+  }
+  IWXSTR *xstr = iwxstr_new_printf("%s%s", table, path);
+  if (!xstr) {
+    return iwrc_set_errno(IW_ERROR_ALLOC, errno);
+  }
+  iwrc rc = _item_put(op->pool, op->n, iwxstr_ptr(xstr), key, vals);
+  iwxstr_destroy(xstr);
+  return rc;
+}
+
+iwrc aws4dd_batch_write_value(
+  struct aws4dd_item_update *op,
+  const char                *table,
+  const char                *path,
+  const char                *key,
+  const char                *val
+  ) {
+  if (!op || !table || !path || !key || !val) {
+    return IW_ERROR_INVALID_ARGS;
+  }
+  RCR(_name_check(table, AWS4DD_RESOURCE_TABLE));
+  if (*path != '/') {
+    return IW_ERROR_INVALID_ARGS;
+  }
+  IWXSTR *xstr = iwxstr_new_printf("/RequestItems/%s%s", table, path);
+  if (!xstr) {
+    return iwrc_set_errno(IW_ERROR_ALLOC, errno);
+  }
+  iwrc rc = _item_put(op->pool, op->n, iwxstr_ptr(xstr), key, (const char*[]) { val, 0 });
+  iwxstr_destroy(xstr);
+  return rc;
+}
+
+iwrc aws4dd_bach_write(
+  const struct aws4_request_spec *spec,
+  struct aws4dd_batch_write      *op,
+  struct aws4dd_response        **rpp
+  ) {
+  if (!spec || !op || !rpp) {
+    return IW_ERROR_INVALID_ARGS;
+  }
+  *rpp = 0;
+
+  iwrc rc = 0;
+  IWPOOL *pool = op->pool;
+  JBL_NODE n = op->n;
+  struct aws4dd_response *resp = iwpool_calloc(sizeof(*resp), pool);
+  RCB(finish, resp);
+
+  resp->pool = pool;
+  iwpool_ref(pool);
+
+
+  switch (op->spec.ret.metrics) {
+    case AWS4DD_RETURN_COLLECTION_SIZE:
+      RCC(rc, finish, jbn_add_item_str(n, "ReturnItemCollectionMetrics", "SIZE", -1, 0, pool));
+      break;
+    default:
+      break;
+  }
+
+  switch (op->spec.ret.capacity) {
+    case AWS4DD_RETURN_CONSUMED_INDEXES:
+      RCC(rc, finish, jbn_add_item_str(n, "ReturnConsumedCapacity", "INDEXES", -1, 0, pool));
+      break;
+    case AWS4DD_RETURN_CONSUMED_TOTAL:
+      RCC(rc, finish, jbn_add_item_str(n, "ReturnConsumedCapacity", "TOTAL", -1, 0, pool));
+      break;
+    default:
+      break;
+  }
+
+
+  RCC(rc, finish, aws4_request_json(spec, &(struct aws4_request_json_payload) {
+    .json = n,
+    .amz_target = "DynamoDB_20120810.BatchWriteItem",
   }, pool, &resp->data, &resp->status_code));
 
   *rpp = resp;

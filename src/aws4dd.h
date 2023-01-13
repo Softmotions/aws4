@@ -134,7 +134,7 @@ IW_EXPORT iwrc aws4dd_table_delete(
 // TagResource
 //
 
-/// Tag a DynamoDB resource identified by \c resource_arn with given \c tag_pairs
+/// Tag a DynamoDB resource identified by \c resource_arn with given \c tag_pairs.
 ///
 /// Example:
 ///
@@ -144,7 +144,7 @@ IW_EXPORT iwrc aws4dd_table_delete(
 ///
 /// @param spec [in] AWS4 request specification.
 /// @param resource_arn [in] Resource ARN
-/// @param tags_pairs A zero element terminated of tag key/value pairs array.
+/// @param tags_pairs Zero terminated array of tag key/value pairs
 IW_EXPORT iwrc aws4dd_tag_resource(
   const struct aws4_request_spec *spec,
   const char                     *resource_arn,
@@ -155,14 +155,21 @@ IW_EXPORT iwrc aws4dd_tag_resource(
 // UntagResource
 //
 
-// TODO:
-
-
-//
-// BatchWriteItem
-//
-
-// TODO:
+/// Untag a DynamoDB resource identified by \c resource_arn with given \c tag_keys.
+///
+/// Example:
+///
+///  awd4dd_untag_resource(spec,
+///                        "arn:aws:dynamodb:us-west-2:123456789012:table/Forum",
+///                        (char*[]){"tag1", "tag2", 0});
+///
+/// @param spec [in] AWS4 request specification.
+/// @param resource_arn [in] Resource ARN
+/// @param tags_keys Zero terminated array of tag keys.
+IW_EXPORT iwrc aws4dd_untag_resource(
+  const struct aws4_request_spec *spec,
+  const char                     *resource_arn,
+  const char                     *tag_keys[]);
 
 
 //
@@ -364,6 +371,64 @@ IW_EXPORT iwrc aws4dd_item_update(
   const struct aws4_request_spec *spec,
   struct aws4dd_item_update      *op,
   struct aws4dd_response        **rpp);
+
+//
+// BatchWriteItem
+//
+
+/// BatchWriteItem operation specification.
+struct aws4dd_batch_write_spec {
+  struct {
+    aws4dd_return_consumed_capacity_e  capacity;
+    aws4dd_return_collection_metrics_e metrics;
+  } ret;
+};
+
+struct aws4dd_batch_write;
+
+/// Creates a new BatchWriteItem operation handler.
+/// NOTE: \c opp must be destroyed by aws4dd_batch_write_op_destroy().
+IW_EXPORT iwrc aws4dd_batch_write_op(
+  struct aws4dd_batch_write           **opp,
+  const struct aws4dd_batch_write_spec *spec);
+
+/// Destroys BatchWriteItem operation handler.
+IW_EXPORT void aws4dd_batch_write_op_destroy(struct aws4dd_batch_write **opp);
+
+/// Adds a new PutRequest/DeleteRequest to the BatchWriteItem operation.
+///
+/// Example:
+///
+///  aws4dd_batch_write_array(op, "MyTable",  "/DeleteRequest/Key/MyKeyTags",
+///                                            "SS", (const char*[]){ "Update", "Help", 0 });
+///
+IW_EXPORT iwrc aws4dd_batch_write_array(
+  struct aws4dd_item_update *op,
+  const char                *table,
+  const char                *path,
+  const char                *key,
+  const char               **vals);
+
+/// Adds a new PutRequest/DeleteRequest to the BatchWriteItem operation.
+///
+/// Example:
+///
+///  aws4dd_batch_write_value(op, "MyTable", "/PutRequest/Item/Forum", "S", "Amazon DynamoDB");
+///
+IW_EXPORT iwrc aws4dd_batch_write_value(
+  struct aws4dd_item_update *op,
+  const char                *table,
+  const char                *path,
+  const char                *key,
+  const char                *val);
+
+/// Executes a BatchWriteItem operation.
+/// NOTE: \c rpp must be destroyed by aws4dd_response_destroy().
+IW_EXPORT iwrc aws4dd_bach_write(
+  const struct aws4_request_spec *spec,
+  struct aws4dd_batch_write      *op,
+  struct aws4dd_response        **rpp);
+
 
 //
 // ItemGet
