@@ -468,11 +468,11 @@ static iwrc _lock_check(struct aws4dl_lock *lock, bool *out_granted) {
     RCC(rc, finish, jbn_at(resp->data, "/Items", &items));
 
     for (JBL_NODE it = items->child; it; it = it->next) {
-      if (!jbn_at(it, psk, &nsk) || nsk->type != JBV_STR) {
+      if (jbn_at(it, psk, &nsk) || nsk->type != JBV_STR) {
         rc = IW_ERROR_UNEXPECTED_RESPONSE;
         goto finish;
       }
-      if (!jbn_at(it, "/expiresAt/N", &n) || n->type != JBV_STR) {
+      if (jbn_at(it, "/expiresAt/N", &n) || n->type != JBV_STR) {
         rc = IW_ERROR_UNEXPECTED_RESPONSE;
         goto finish;
       }
@@ -512,7 +512,7 @@ static iwrc _lock_check_wait(struct aws4dl_lock *lock) {
     RCC(rc, finish, iwp_current_time_ms(&ct1, true));
     RCC(rc, finish, _lock_check(lock, &granted));
     if (!granted) {
-      if (!heartbeat_started && !(lock_spec->flags & AWS4DL_FLAG_HEARTBEAT_NO)) {
+      if (!heartbeat_started && !(lock_spec->flags & AWS4DL_FLAG_HEARTBEAT_NONE)) {
         heartbeat_started = true;
         RCC(rc, finish, _heartbeat_start(lock));
       }
@@ -595,9 +595,9 @@ iwrc aws4dl_lock_acquire(const struct aws4dl_lock_acquire_spec *acquire_spec, st
   }
 
   if (lock_spec->lock_enqueued_poll_ms == 0) {
-    lock_spec->lock_enqueued_poll_ms = 1000;
-  } else if (lock_spec->lock_enqueued_poll_ms < 500) {
     lock_spec->lock_enqueued_poll_ms = 500;
+  } else if (lock_spec->lock_enqueued_poll_ms < 200) {
+    lock_spec->lock_enqueued_poll_ms = 200;
   }
 
   RCC(rc, finish, _ticket_acquire(lock));
@@ -639,7 +639,9 @@ iwrc aws4dl_lock_release(struct aws4dl_lock **lpp) {
   RCC(rc, finish, aws4dd_item_delete_value(op, pk, "S", lock->acquire_spec.lock_spec.resource_name));
   RCC(rc, finish, aws4dd_item_delete_value(op, sk, "S", lock->ticket));
 
-  rc = aws4dd_item_delete(&lock->acquire_spec.request, op, &resp);
+  struct aws4_request_spec request = lock->acquire_spec.request;
+  request.flags |= AWS_REQUEST_ACCEPT_ANY_STATUS_CODE;
+  rc = aws4dd_item_delete(&request, op, &resp);
 
 finish:
   *lpp = 0;

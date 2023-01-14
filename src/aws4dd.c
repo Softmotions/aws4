@@ -2120,9 +2120,7 @@ iwrc aws4dd_ttl_update(
   }
 
 finish:
-  if (rc) {
-    iwpool_destroy(pool);
-  }
+  iwpool_destroy(pool);
   return rc;
 }
 

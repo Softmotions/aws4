@@ -4,7 +4,7 @@
 
 #include <iwnet/iwn_poller.h>
 
-#define AWS4DL_FLAG_HEARTBEAT_NO   0x01U ///< Do not perform periodical locking heartbeat.
+#define AWS4DL_FLAG_HEARTBEAT_NONE 0x01U ///< Do not perform periodical locking heartbeat.
 #define AWS4DL_FLAG_HEARTBEAT_ONCE 0x02U ///< Do only one locking heartbeat iteration. Used for testing.
 
 /// Distributed lock specification.
@@ -15,10 +15,10 @@ struct aws4dl_lock_spec {
   const char *sk_name;                ///< Sort string key attribute name. Default: `sk`.
   uint32_t    lock_enqueued_ttl_sec;  ///< Time to live (TTL) in seconds for enqueued lock. Default: 60. Min: 10.
   uint32_t    lock_enqueued_wait_sec; ///< Max time to wait get a lock. Default: 120. Min: 10.
-  uint32_t    lock_enqueued_poll_ms;  ///< Locks queue polling period in milliseconds. Default: 1000. Min: 500.
-  uint32_t    lock_check_page_size;   ///< Max number of records to fetch per lock check iteration. 
+  uint32_t    lock_enqueued_poll_ms;  ///< Locks queue polling period in milliseconds. Default: 500. Min: 200.
+  uint32_t    lock_check_page_size;   ///< Max number of records to fetch per lock check iteration.
                                       ///  Default: 100. Min: 10
-  uint32_t    flags;                  ///< Flags. See `AWS4DL_FLAG_*`.
+  uint32_t flags;                     ///< Flags. See `AWS4DL_FLAG_*`.
 };
 
 /// Distributed lock acquire specification.

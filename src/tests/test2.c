@@ -59,16 +59,18 @@ static iwrc _dynamodb_spawn(void) {
   }, &dynamodb_pid);
 }
 
-static iwrc _test_lock_acquire_release(void) {
+static iwrc _test_lock_acquire_release1(void) {
   iwrc rc = 0;
 
   struct aws4dl_lock *lock = 0;
   struct aws4dl_lock_acquire_spec spec = {
-    .request   = request_spec,
-    .poller    = poller,
-    .lock_spec = {
-      .lock_enqueued_ttl_sec = 60U * 60,
-      .flags   = AWS4DL_FLAG_HEARTBEAT_ONCE,
+    .request                  = request_spec,
+    .poller                   = poller,
+    .lock_spec                = {
+      .lock_enqueued_ttl_sec  = 100000, // high enough
+      .lock_enqueued_wait_sec = 100000,
+      .lock_enqueued_poll_ms  = 100000000,
+      .flags                  = AWS4DL_FLAG_HEARTBEAT_NONE,
     }
   };
 
@@ -90,7 +92,7 @@ static void* _tests_run(void *d) {
   iwp_sleep(500);
   iwrc rc = 0;
 
-  RCC(rc, finish, _test_lock_acquire_release());
+  RCC(rc, finish, _test_lock_acquire_release1());
 
 finish:
   IWN_ASSERT(rc == 0);
