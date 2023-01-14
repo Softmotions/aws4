@@ -1339,6 +1339,20 @@ iwrc aws4dd_query_value(struct aws4dd_query *op, const char *path, const char *k
   return aws4dd_query_array(op, path, key, (const char*[]) { value, 0 });
 }
 
+iwrc aws4dd_query_exclusive_start_key(struct aws4dd_query *op, JBL_NODE key) {
+  if (!op || !key) {
+    return IW_ERROR_INVALID_ARGS;
+  }
+  iwrc rc = 0;
+  JBL_NODE n;
+  RCC(rc, finish, jbn_from_json("{}", &n, op->pool));
+  RCC(rc, finish, jbn_copy_path(key, "/", n, "/ExclusiveStartKey", true, false, op->pool));
+  rc = jbn_patch_auto(op->n, n, op->pool);
+
+finish:
+  return rc;
+}
+
 iwrc aws4dd_query(
   const struct aws4_request_spec *spec,
   struct aws4dd_query *op, struct aws4dd_response **rpp
@@ -1416,6 +1430,12 @@ iwrc aws4dd_query(
       break;
     default:
       break;
+  }
+
+  if (op->spec.exclusive_start_key_json && *op->spec.exclusive_start_key_json != '\0') {
+    JBL_NODE n;
+    RCC(rc, finish, jbn_from_json(op->spec.exclusive_start_key_json, &n, pool));
+    RCC(rc, finish, aws4dd_query_exclusive_start_key(op, n));
   }
 
   RCC(rc, finish, aws4_request_json(spec, &(struct aws4_request_json_payload) {

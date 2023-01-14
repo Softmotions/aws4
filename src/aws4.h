@@ -54,7 +54,7 @@ struct aws4_request_payload {
 
 struct aws4_request_json_payload {
   const char    *amz_target;
-  const JBL_NODE json;
+  JBL_NODE json;
 };
 
 struct aws4_response {

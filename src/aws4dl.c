@@ -2,6 +2,7 @@
 #include "aws4dd.h"
 
 #include <iowow/iwp.h>
+#include <iowow/iwconv.h>
 #include <iwnet/iwn_scheduler.h>
 
 #include <unistd.h>
@@ -387,6 +388,8 @@ static iwrc _heartbeat_start(struct aws4dl_lock *lock) {
     .timeout_ms = lock->acquire_spec.lock_spec.lock_enqueued_ttl_sec / 3,
   }, &lock->heartbeat_fd));
 
+  pthread_cond_broadcast(&lock->cond);
+
 finish:
   pthread_mutex_unlock(&lock->mtx);
   return rc;
@@ -396,10 +399,135 @@ static void _lock_destroy(struct aws4dl_lock *lock) {
   if (!lock) {
     return;
   }
-  // TODO: Stop heartbeat
+
+  // Stop heartbeat
+  pthread_mutex_lock(&lock->mtx);
+  if (lock->heartbeat_fd) {
+    iwn_poller_remove(lock->acquire_spec.poller, lock->heartbeat_fd);
+  }
+  pthread_mutex_unlock(&lock->mtx);
+
+  pthread_mutex_lock(&lock->mtx);
+  while (lock->heartbeat_fd) {
+    int rci = pthread_cond_wait(&lock->cond, &lock->mtx);
+    if (rci) {
+      iwrc rc = iwrc_set_errno(IW_ERROR_THREADING_ERRNO, rci);
+      iwlog_ecode_error3(rc);
+      break;
+    }
+  }
+  pthread_mutex_unlock(&lock->mtx);
+
   pthread_cond_destroy(&lock->cond);
   pthread_mutex_destroy(&lock->mtx);
   iwpool_destroy(lock->pool);
+}
+
+static iwrc _lock_check(struct aws4dl_lock *lock, bool *out_granted) {
+  iwrc rc = 0;
+
+  *out_granted = false;
+
+  struct aws4dd_query *op = 0;
+  struct aws4dd_response *resp = 0;
+  struct aws4dl_lock_spec *lock_spec = &lock->acquire_spec.lock_spec;
+  struct aws4_request_spec request_spec = lock->acquire_spec.request;
+
+  char *psk;
+  uint64_t ctime;
+
+  IWXSTR *xstr = 0;
+  IWPOOL *pool_local = 0;
+
+  RCB(finish, pool_local = iwpool_create_empty());
+  RCB(finish, xstr = iwxstr_new()); // Exclusive start key json holder
+  RCC(rc, finish, iwp_current_time_ms(&ctime, false));
+  ctime /= 1000;
+
+  RCB(finish, psk = iwpool_printf(pool_local, "/%s/S", lock_spec->sk_name));
+
+  do {
+    JBL_NODE n, items, nsk;
+
+    struct aws4dd_query_spec spec = {
+      .table_name               = lock_spec->table_name,
+      .key_condition_expression = "#pk = :pk AND begins_with(#sk, :sk)",
+      .exclusive_start_key_json = iwxstr_ptr(xstr),
+      .limit                    = lock_spec->lock_check_page_size,
+      .scan_index_forward       = true,
+      .consistent_read          = true,
+    };
+
+    RCC(rc, finish, aws4dd_query_op(&op, &spec));
+    RCC(rc, finish, aws4dd_query_expression_attr_name(op, "#pk", lock_spec->pk_name));
+    RCC(rc, finish, aws4dd_query_expression_attr_name(op, "#sk", lock_spec->sk_name));
+    RCC(rc, finish, aws4dd_query_value(op, "/ExpressionAttributeValues/:pk", "S", lock_spec->resource_name));
+    RCC(rc, finish, aws4dd_query_value(op, "/ExpressionAttributeValues/:sk", "S", "/"));
+
+    RCC(rc, finish, aws4dd_query(&lock->acquire_spec.request, op, &resp));
+    RCC(rc, finish, jbn_at(resp->data, "/Items", &items));
+
+    for (JBL_NODE it = items->child; it; it = it->next) {
+      if (!jbn_at(it, psk, &nsk) || nsk->type != JBV_STR) {
+        rc = IW_ERROR_UNEXPECTED_RESPONSE;
+        goto finish;
+      }
+      if (!jbn_at(it, "/expiresAt/N", &n) || n->type != JBV_STR) {
+        rc = IW_ERROR_UNEXPECTED_RESPONSE;
+        goto finish;
+      }
+      uint64_t expiresAt = iwatoi(n->vptr);
+      if (expiresAt < ctime) {
+        ; // Skip expired records
+      } else if (strcmp(lock->ticket, nsk->vptr) == 0) {
+        *out_granted = true;
+        goto finish;
+      } else {
+        goto finish;
+      }
+    }
+
+    iwxstr_clear(xstr);
+    if (!jbn_at(resp->data, "/LastEvaluatedKey", &n) && n->type == JBV_OBJECT) {
+      RCC(rc, finish, jbn_as_json(n, jbl_xstr_json_printer, xstr, 0));
+    }
+  } while (iwxstr_size(xstr));
+
+finish:
+  aws4dd_response_destroy(&resp);
+  aws4dd_query_op_destroy(&op);
+  iwxstr_destroy(xstr);
+  iwpool_destroy(pool_local);
+  return rc;
+}
+
+static iwrc _lock_check_wait(struct aws4dl_lock *lock) {
+  iwrc rc = 0;
+  bool granted = false, heartbeat_started = false;
+  struct aws4dl_lock_spec *lock_spec = &lock->acquire_spec.lock_spec;
+  int64_t wtime = (int64_t) lock_spec->lock_enqueued_wait_sec * 1000;
+
+  do {
+    uint64_t ct1, ct2;
+    RCC(rc, finish, iwp_current_time_ms(&ct1, true));
+    RCC(rc, finish, _lock_check(lock, &granted));
+    if (!granted) {
+      if (!heartbeat_started && !(lock_spec->flags & AWS4DL_FLAG_HEARTBEAT_NO)) {
+        heartbeat_started = true;
+        RCC(rc, finish, _heartbeat_start(lock));
+      }
+      RCC(rc, finish, iwp_sleep(lock_spec->lock_enqueued_poll_ms));
+      RCC(rc, finish, iwp_current_time_ms(&ct2, true));
+      wtime -= (ct2 - ct1);
+    }
+  } while (!granted && wtime > 0);
+
+  if (!granted) {
+    rc = IW_ERROR_OPERATION_TIMEOUT;
+  }
+
+finish:
+  return rc;
 }
 
 iwrc aws4dl_lock_acquire(const struct aws4dl_lock_acquire_spec *acquire_spec, struct aws4dl_lock **lpp) {
@@ -460,14 +588,21 @@ iwrc aws4dl_lock_acquire(const struct aws4dl_lock_acquire_spec *acquire_spec, st
     lock_spec->lock_enqueued_wait_sec = 10;
   }
 
-  RCC(rc, finish, _ticket_acquire(lock));
-  RCC(rc, finish, _lock_enqueue(lock));
-
-  if (!(lock_spec->flags & AWS4DL_FLAG_HEARTBEAT_NO)) {
-    RCC(rc, finish, _heartbeat_start(lock));
+  if (lock_spec->lock_check_page_size == 0) {
+    lock_spec->lock_check_page_size = 100;
+  } else if (lock_spec->lock_check_page_size < 10) {
+    lock_spec->lock_check_page_size = 10;
   }
 
-  // TODO:
+  if (lock_spec->lock_enqueued_poll_ms == 0) {
+    lock_spec->lock_enqueued_poll_ms = 1000;
+  } else if (lock_spec->lock_enqueued_poll_ms < 500) {
+    lock_spec->lock_enqueued_poll_ms = 500;
+  }
+
+  RCC(rc, finish, _ticket_acquire(lock));
+  RCC(rc, finish, _lock_enqueue(lock));
+  RCC(rc, finish, _lock_check_wait(lock));
 
   *lpp = lock;
 
@@ -488,10 +623,29 @@ iwrc aws4dl_lock_release(struct aws4dl_lock **lpp) {
   }
   iwrc rc = 0;
   struct aws4dl_lock *lock = *lpp;
+  struct aws4dd_item_delete *op = 0;
+  struct aws4dd_response *resp = 0;
 
-  // TODO:
+  char *pk, *sk;
+  IWPOOL *pool;
 
+  RCB(finish, pool = iwpool_create_empty());
+  RCB(finish, pk = iwpool_printf(pool, "/Key/%s", lock->acquire_spec.lock_spec.pk_name));
+  RCB(finish, sk = iwpool_printf(pool, "/Key/%s", lock->acquire_spec.lock_spec.sk_name));
+
+  RCC(rc, finish, aws4dd_item_delete_op(&op, &(struct aws4dd_item_delete_spec) {
+    .table_name = lock->acquire_spec.lock_spec.table_name,
+  }));
+  RCC(rc, finish, aws4dd_item_delete_value(op, pk, "S", lock->acquire_spec.lock_spec.resource_name));
+  RCC(rc, finish, aws4dd_item_delete_value(op, sk, "S", lock->ticket));
+
+  rc = aws4dd_item_delete(&lock->acquire_spec.request, op, &resp);
+
+finish:
   *lpp = 0;
+  aws4dd_response_destroy(&resp);
+  aws4dd_item_delete_op_destroy(&op);
   _lock_destroy(lock);
+  iwpool_destroy(pool);
   return rc;
 }

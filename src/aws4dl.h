@@ -15,6 +15,9 @@ struct aws4dl_lock_spec {
   const char *sk_name;                ///< Sort string key attribute name. Default: `sk`.
   uint32_t    lock_enqueued_ttl_sec;  ///< Time to live (TTL) in seconds for enqueued lock. Default: 60. Min: 10.
   uint32_t    lock_enqueued_wait_sec; ///< Max time to wait get a lock. Default: 120. Min: 10.
+  uint32_t    lock_enqueued_poll_ms;  ///< Locks queue polling period in milliseconds. Default: 1000. Min: 500.
+  uint32_t    lock_check_page_size;   ///< Max number of records to fetch per lock check iteration. 
+                                      ///  Default: 100. Min: 10
   uint32_t    flags;                  ///< Flags. See `AWS4DL_FLAG_*`.
 };
 

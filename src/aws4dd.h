@@ -30,9 +30,9 @@ IW_EXPORT void aws4dd_response_destroy(struct aws4dd_response **rpp);
 /// Returns error is given `name` cannot be used as AWS DynamoDB resource name.
 IW_EXPORT iwrc aws4dd_resource_name_check(const char *name, int resource);
 
-///
-/// Table
-///
+//
+// Table
+//
 
 struct aws4dd_table_create;
 
@@ -150,7 +150,6 @@ IW_EXPORT iwrc aws4dd_tag_resource(
   const char                     *resource_arn,
   const char                     *tag_pairs[]);
 
-
 //
 // UntagResource
 //
@@ -171,7 +170,6 @@ IW_EXPORT iwrc aws4dd_untag_resource(
   const char                     *resource_arn,
   const char                     *tag_keys[]);
 
-
 //
 // ListTables
 //
@@ -183,7 +181,6 @@ IW_EXPORT iwrc aws4dd_tables_list(
   const char                     *exclusive_start_table_name,
   uint32_t                        limit,
   struct aws4dd_response        **rpp);
-
 
 //
 // UpdateTable
@@ -429,7 +426,6 @@ IW_EXPORT iwrc aws4dd_bach_write(
   struct aws4dd_batch_write      *op,
   struct aws4dd_response        **rpp);
 
-
 //
 // ItemGet
 //
@@ -498,6 +494,7 @@ struct aws4dd_query_spec {
   const char *key_condition_expression;
   const char *filter_expression;
   const char *projection_expression;
+  const char *exclusive_start_key_json;
   aws4dd_return_consumed_capacity_e return_consumed_capacity;
   aws4dd_select_e select;
   bool     consistent_read;
@@ -518,14 +515,17 @@ IW_EXPORT void aws4dd_query_op_destroy(struct aws4dd_query **opp);
 /// @param val ExpressionAttributeNames value
 IW_EXPORT iwrc aws4dd_query_expression_attr_name(struct aws4dd_query *op, const char *key, const char *value);
 
-/// Adds value to the /ExpressionAttributeValues or /ExclusiveStartKey part of Query operation.
+/// Adds value to the /ExpressionAttributeValues or part of Query operation.
 /// Example: aws4dd_query_value(op, "/ExpressionAttributeValues/:v1", "S", "Amazon DynamoDB")
 IW_EXPORT iwrc aws4dd_query_value(struct aws4dd_query *op, const char *path, const char *key, const char *value);
 
-/// Adds values to the /ExpressionAttributeValues or /ExclusiveStartKey part of Query operation.
+/// Adds values to the /ExpressionAttributeValues or part of Query operation.
 /// Example: aws4dd_query_array(op, "/ExpressionAttributeValues/:v1", "SS",
 ///                             (const char*[]) { "Update", "Multiple", "Help", 0 })
 IW_EXPORT iwrc aws4dd_query_array(struct aws4dd_query *op, const char *path, const char *key, const char **values);
+
+/// Sets /ExclusiveStartKey/ part of Query operation.
+IW_EXPORT iwrc aws4dd_query_exclusive_start_key(struct aws4dd_query *op, JBL_NODE key);
 
 /// Executes a given Query operation.
 /// NOTE: \c rpp must be destroyed by aws4dd_response_destroy().
@@ -626,7 +626,6 @@ IW_EXPORT iwrc aws4dd_item_delete(
   const struct aws4_request_spec *spec,
   struct aws4dd_item_delete      *op,
   struct aws4dd_response        **rpp);
-
 
 //
 // TimeToLive (TTL)
