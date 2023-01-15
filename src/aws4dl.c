@@ -226,7 +226,6 @@ IW_STATIC_NTESTS iwrc _lock_enqueue(struct aws4dl_lock *lock) {
   const char *condition_expression, *upk, *usk;
   uint64_t time;
 
-  JBL_NODE n;
   IWPOOL *pool = iwpool_create_empty();
   if (!pool) {
     return iwrc_set_errno(IW_ERROR_ALLOC, errno);
@@ -415,7 +414,6 @@ static iwrc _lock_check(struct aws4dl_lock *lock, bool *out_granted) {
   struct aws4dd_query *op = 0;
   struct aws4dd_response *resp = 0;
   struct aws4dl_lock_spec *lock_spec = &lock->acquire_spec.lock_spec;
-  struct aws4_request_spec request_spec = lock->acquire_spec.request;
 
   char *psk;
   uint64_t ctime;

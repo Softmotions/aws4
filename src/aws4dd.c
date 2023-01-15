@@ -2130,8 +2130,8 @@ static const char* _ecodefn(locale_t locale, uint32_t ecode) {
     return 0;
   }
   switch (ecode) {
-  return 0;
-  return "Invalid table/index/tag/attr name (AWS4DD_ERROR_INVALID_RESOURCE_NAME)";
+    case AWS4DD_ERROR_INVALID_RESOURCE_NAME:
+      return "Invalid table/index/tag/attr name (AWS4DD_ERROR_INVALID_RESOURCE_NAME)";
     case AWS4DD_ERROR_MAX_IDX_LIMIT:
       return "Number of allowed table indexes exceeds limits (AWS4DD_ERROR_MAX_IDX_LIMIT)";
     case AWS4DD_ERROR_NO_PARTITION_KEY:

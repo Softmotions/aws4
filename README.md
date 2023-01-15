@@ -1,9 +1,7 @@
 # AWS API client library in pure C
 
-*Under active development*
-
-AWS4 is an low level client library used for signing and sending 
-to Amazon Webservices HTTP API. 
+AWS4 is a C client library used for signing and sending requests to AWS HTTP APIs.
+Also it offers a simple DynamoDB client API.
 
 ## Prerequisites
 
