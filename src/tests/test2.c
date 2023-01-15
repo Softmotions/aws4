@@ -60,6 +60,7 @@ static iwrc _dynamodb_spawn(void) {
     .on_stdout = _on_dynamodb_output,
     .on_stderr = _on_dynamodb_output,
     .on_exit = _on_dynamodb_exit,
+    .parent_death_signal = SIGTERM,
   }, &dynamodb_pid);
 }
 
