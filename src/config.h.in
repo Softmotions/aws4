@@ -1,5 +1,11 @@
 #pragma once
 
+#ifdef IW_TESTS
+#define IW_STATIC_NTESTS
+#else
+#define IW_STATIC_NTESTS static
+#endif
+
 #define VERSION_MAJOR @PROJECT_VERSION_MAJOR@
 #define VERSION_MINOR @PROJECT_VERSION_MINOR@
 #define VERSION_PATCH @PROJECT_VERSION_PATCH@

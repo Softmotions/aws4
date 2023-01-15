@@ -1,5 +1,5 @@
-#include "aws4dl.h"
-#include "aws4dd.h"
+#include "aws4dl_internal.h"
+#include "config.h"
 
 #include <iowow/iwp.h>
 #include <iowow/iwconv.h>
@@ -8,19 +8,6 @@
 #include <unistd.h>
 #include <inttypes.h>
 #include <pthread.h>
-
-#define _LF_TICKET_ITEM_CREATE 0x01U
-
-struct aws4dl_lock {
-  struct aws4dl_lock_acquire_spec acquire_spec;
-  IWPOOL  *pool;
-  char     ticket[40];   ///< Acquired lock ticket.
-  uint32_t flags;        ///< `_LF_XXX` state flags
-
-  int heartbeat_fd;      ///< Poller heartbeat task file descriptor.
-  pthread_mutex_t mtx;
-  pthread_cond_t  cond;
-};
 
 static iwrc _lock_table_ensure(struct aws4dl_lock *lock) {
   iwrc rc = 0;
@@ -65,7 +52,7 @@ static iwrc _lock_table_ensure(struct aws4dl_lock *lock) {
       rc = AWS4_API_REQUEST_ERROR;
       goto finish;
     }
-  } else {
+  } else if (!(lock->acquire_spec.lock_spec.flags & AWS4DL_FLAG_TABLE_TTL_NONE)) {
     bool ttl_enabled = false;
     rc = aws4dd_ttl_update(&request_spec, lock_spec.table_name, "expiresAt", true, &ttl_enabled);
     if (rc) {
@@ -138,7 +125,7 @@ finish:
   return rc;
 }
 
-static iwrc _ticket_acquire(struct aws4dl_lock *lock) {
+IW_STATIC_NTESTS iwrc _ticket_acquire(struct aws4dl_lock *lock) {
   iwrc rc = 0;
 
   const char *upk;
@@ -229,7 +216,7 @@ finish:
   return rc;
 }
 
-static iwrc _lock_enqueue(struct aws4dl_lock *lock) {
+IW_STATIC_NTESTS iwrc _lock_enqueue(struct aws4dl_lock *lock) {
   iwrc rc = 0;
 
   struct aws4dd_response *resp = 0;

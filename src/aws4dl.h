@@ -6,6 +6,7 @@
 
 #define AWS4DL_FLAG_HEARTBEAT_NONE 0x01U ///< Do not perform periodical locking heartbeat.
 #define AWS4DL_FLAG_HEARTBEAT_ONCE 0x02U ///< Do only one locking heartbeat iteration. Used for testing.
+#define AWS4DL_FLAG_TABLE_TTL_NONE 0x04U ///< Disable DynamoDB TTL `expiresAt` table attribute checking.
 
 /// Distributed lock specification.
 struct aws4dl_lock_spec {

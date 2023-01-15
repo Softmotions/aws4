@@ -1,6 +1,7 @@
 #define _GNU_SOURCE
 
 #include "aws4dl.h"
+#include "aws4dl_internal.h"
 
 #include <iowow/iwp.h>
 #include <iwnet/iwn_tests.h>
@@ -11,6 +12,9 @@
 #include <sys/types.h>
 #include <stdlib.h>
 #include <pthread.h>
+
+iwrc _ticket_acquire(struct aws4dl_lock *lock);
+iwrc _lock_enqueue(struct aws4dl_lock *lock);
 
 static int dynamodb_pid = 1;
 static struct iwn_poller *poller;
@@ -61,7 +65,6 @@ static iwrc _dynamodb_spawn(void) {
 
 static iwrc _test_lock_acquire_release1(void) {
   iwrc rc = 0;
-
   struct aws4dl_lock *lock = 0;
   struct aws4dl_lock_acquire_spec spec = {
     .request                  = request_spec,
@@ -75,9 +78,7 @@ static iwrc _test_lock_acquire_release1(void) {
   };
 
   RCC(rc, finish, aws4dl_lock_acquire(&spec, &lock));
-
-  sleep(1);
-
+  // In-lock
   RCC(rc, finish, aws4dl_lock_release(&lock));
 
 finish:
@@ -87,12 +88,57 @@ finish:
   return rc;
 }
 
+static iwrc _test_lock_acquire_release2(void) {
+  iwrc rc = 0;
+  struct aws4dl_lock_acquire_spec spec = {
+    .request                  = request_spec,
+    .poller                   = poller,
+    .lock_spec                = {
+      .table_name             = "aws4dl",
+      .resource_name          = "resource",
+      .pk_name                = "pk",
+      .sk_name                = "sk",
+      .lock_check_page_size   = 10,
+      .lock_enqueued_ttl_sec  = 1,
+      .lock_enqueued_wait_sec = 1,
+      .lock_enqueued_poll_ms  = 500,
+      .flags                  = AWS4DL_FLAG_HEARTBEAT_NONE | AWS4DL_FLAG_TABLE_TTL_NONE,
+    }
+  };
+
+  // Generate a bunch of expired records
+  const int expnum = 100;
+  IWPOOL *pool = iwpool_create_empty();
+  IWN_ASSERT_FATAL(pool);
+
+  struct aws4dl_lock lock = { .pool = pool };
+  lock.acquire_spec = spec;
+  pthread_mutex_init(&lock.mtx, 0);
+  pthread_cond_init(&lock.cond, 0);
+
+  for (int i = 0; i < expnum; ++i) {
+    RCC(rc, finish, _ticket_acquire(&lock));
+    RCC(rc, finish, _lock_enqueue(&lock));
+  }
+
+  pthread_mutex_destroy(&lock.mtx);
+  pthread_cond_destroy(&lock.cond);
+  iwpool_destroy(pool);
+
+  // Now try to get a lock 
+
+
+finish:
+  return rc;
+}
+
 static void* _tests_run(void *d) {
   pthread_barrier_wait(&start_br);
   iwp_sleep(500);
   iwrc rc = 0;
 
-  RCC(rc, finish, _test_lock_acquire_release1());
+  //RCC(rc, finish, _test_lock_acquire_release1());
+  RCC(rc, finish, _test_lock_acquire_release2());
 
 finish:
   IWN_ASSERT(rc == 0);

@@ -56,7 +56,9 @@ target_link_libraries(aws4_s PUBLIC ${LINK_LIBS})
 set_target_properties(
   aws4_s
   PROPERTIES VERSION ${PROJECT_VERSION}
-             PUBLIC_HEADER "${CMAKE_CURRENT_SOURCE_DIR}/aws4.h"
+             PUBLIC_HEADER ${CMAKE_CURRENT_SOURCE_DIR}/aws4.h
+             ${CMAKE_CURRENT_SOURCE_DIR}/aws4dd.h
+             ${CMAKE_CURRENT_SOURCE_DIR}/aws4dl.h
              OUTPUT_NAME aws4-${PROJECT_VERSION_MAJOR})
 
 if(OWNER_PROJECT_NAME)
