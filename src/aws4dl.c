@@ -477,7 +477,9 @@ static iwrc _lock_check(struct aws4dl_lock *lock, bool *out_granted) {
     iwxstr_clear(xstr);
     if (!jbn_at(resp->data, "/LastEvaluatedKey", &n) && n->type == JBV_OBJECT) {
       RCC(rc, finish, jbn_as_json(n, jbl_xstr_json_printer, xstr, 0));
-    }
+      aws4dd_response_destroy(&resp);
+      aws4dd_query_op_destroy(&op);
+    } 
   } while (iwxstr_size(xstr));
 
 finish:

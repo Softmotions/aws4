@@ -90,7 +90,7 @@ finish:
 
 static iwrc _test_lock_acquire_release2(void) {
   iwrc rc = 0;
-  struct aws4dl_lock_acquire_spec spec = {
+  struct aws4dl_lock_acquire_spec exp_spec = {
     .request                  = request_spec,
     .poller                   = poller,
     .lock_spec                = {
@@ -99,7 +99,7 @@ static iwrc _test_lock_acquire_release2(void) {
       .pk_name                = "pk",
       .sk_name                = "sk",
       .lock_check_page_size   = 10,
-      .lock_enqueued_ttl_sec  = 1,
+      .lock_enqueued_ttl_sec  = 0,
       .lock_enqueued_wait_sec = 1,
       .lock_enqueued_poll_ms  = 500,
       .flags                  = AWS4DL_FLAG_HEARTBEAT_NONE | AWS4DL_FLAG_TABLE_TTL_NONE,
@@ -107,26 +107,43 @@ static iwrc _test_lock_acquire_release2(void) {
   };
 
   // Generate a bunch of expired records
-  const int expnum = 100;
+  const int expnum = 25;
   IWPOOL *pool = iwpool_create_empty();
   IWN_ASSERT_FATAL(pool);
 
-  struct aws4dl_lock lock = { .pool = pool };
-  lock.acquire_spec = spec;
-  pthread_mutex_init(&lock.mtx, 0);
-  pthread_cond_init(&lock.cond, 0);
+  struct aws4dl_lock exp_lock = { .pool = pool };
+  exp_lock.acquire_spec = exp_spec;
+  pthread_mutex_init(&exp_lock.mtx, 0);
+  pthread_cond_init(&exp_lock.cond, 0);
 
   for (int i = 0; i < expnum; ++i) {
-    RCC(rc, finish, _ticket_acquire(&lock));
-    RCC(rc, finish, _lock_enqueue(&lock));
+    RCC(rc, finish, _ticket_acquire(&exp_lock));
+    RCC(rc, finish, _lock_enqueue(&exp_lock));
   }
 
-  pthread_mutex_destroy(&lock.mtx);
-  pthread_cond_destroy(&lock.cond);
+  pthread_mutex_destroy(&exp_lock.mtx);
+  pthread_cond_destroy(&exp_lock.cond);
   iwpool_destroy(pool);
 
-  // Now try to get a lock 
+  sleep(1); // Sleep to expire all previous records 
 
+  // Now try to get a lock
+  struct aws4dl_lock *lock = 0;
+  struct aws4dl_lock_acquire_spec spec = {
+    .request                  = request_spec,
+    .poller                   = poller,
+    .lock_spec                = {
+      .flags                  = AWS4DL_FLAG_HEARTBEAT_NONE,
+      .lock_enqueued_ttl_sec  = 100000,
+      .lock_enqueued_wait_sec = 100000,
+      .lock_enqueued_poll_ms  = 100000000,
+      .lock_check_page_size   = 10,
+    }
+  };
+
+  RCC(rc, finish, aws4dl_lock_acquire(&spec, &lock));
+  // In-lock
+  RCC(rc, finish, aws4dl_lock_release(&lock));
 
 finish:
   return rc;
@@ -137,7 +154,7 @@ static void* _tests_run(void *d) {
   iwp_sleep(500);
   iwrc rc = 0;
 
-  //RCC(rc, finish, _test_lock_acquire_release1());
+  RCC(rc, finish, _test_lock_acquire_release1());
   RCC(rc, finish, _test_lock_acquire_release2());
 
 finish:
