@@ -30,7 +30,6 @@ struct aws4_request {
   const char     *aws_secret_key;
   const char     *aws_region;
   const char     *aws_url;
-  const char     *signed_headers; // `;` separated list of signed headers in lower case
   const char     *service;
   struct xcurlreq xreq;
   struct iwn_url  url;
@@ -144,25 +143,29 @@ static IW_ALLOC char* _sr_section_create(struct xcurlreq *req, const char *sp, c
 static iwrc _sr_uri_add(struct _sign_ctx *c) {
   const char *sp = c->xreq->path;
   const char *ep = sp;
-  while (ep && *ep) {
-    while (*ep && *ep == '/') {
-      ++sp;
-      ++ep;
-    }
-    while (*ep && *ep != '/') {
-      ++ep;
-    }
-    if (ep > sp) {
-      char *s = _sr_section_create(c->xreq, sp, ep);
-      if (!s) {
-        return iwrc_set_errno(IW_ERROR_ALLOC, errno);
+  if (ep) {
+    while (*ep != '\0') {
+      while (*ep == '/') {
+        ++sp;
+        ++ep;
       }
-      RCR(iwxstr_printf(c->xstr, "/%s", s));
-    } else if (sp == c->xreq->path) {
-      RCR(iwxstr_cat(c->xstr, "/", 1));
-      break;
+      while (*ep != '\0' && *ep != '/') {
+        ++ep;
+      }
+      if (ep > sp) {
+        char *s = _sr_section_create(c->xreq, sp, ep);
+        if (!s) {
+          return iwrc_set_errno(IW_ERROR_ALLOC, errno);
+        }
+        RCR(iwxstr_printf(c->xstr, "/%s", s));
+      } else if (sp == c->xreq->path) {
+        RCR(iwxstr_cat(c->xstr, "/", 1));
+        break;
+      }
+      sp = ep;
     }
-    sp = ep;
+  } else {
+    RCR(iwxstr_cat(c->xstr, "/", 1));
   }
   return iwxstr_cat(c->xstr, "\n", 1);
 }
@@ -320,13 +323,19 @@ static int _cr_header_pair_compare(const void *a, const void *b) {
 }
 
 static iwrc _sr_headers_add(struct _sign_ctx *c) {
+  //RCB(finish, xstr = iwxstr_new_printf("content-type;host;x-amz-date;x-amz-target"));
   iwrc rc = 0;
   IWPOOL *pool = 0;
+
+  RCB(finish, c->signed_headers = iwxstr_new());
   RCB(finish, pool = iwpool_create_empty());
+
   size_t len = 0;
+
   for (struct curl_slist *h = c->xreq->headers; h; h = h->next) {
     ++len;
   }
+
   struct iwn_pair *harr;
   RCB(finish, harr = iwpool_alloc(sizeof(harr[0]) * len, pool));
 
@@ -338,12 +347,24 @@ static iwrc _sr_headers_add(struct _sign_ctx *c) {
   qsort(harr, len, sizeof(harr[0]), _cr_header_pair_compare);
 
   for (size_t i = 0; i < len; ++i) {
-    RCC(rc, finish, iwxstr_cat(c->xstr, harr[i].key, harr[i].key_len));
-    RCC(rc, finish, iwxstr_cat(c->xstr, ":", 1));
-    RCC(rc, finish, iwxstr_cat(c->xstr, harr[i].val, harr[i].val_len));
-    RCC(rc, finish, iwxstr_cat(c->xstr, "\n", 1));
+    const char *key = harr[i].key;
+    if (  strcmp("content-type", key) == 0
+       || strcmp("host", key) == 0
+       || strcmp("x-amz-date", key) == 0
+       || strcmp("x-amz-target", key) == 0) {
+      RCC(rc, finish, iwxstr_cat(c->xstr, harr[i].key, harr[i].key_len));
+      RCC(rc, finish, iwxstr_cat(c->xstr, ":", 1));
+      RCC(rc, finish, iwxstr_cat(c->xstr, harr[i].val, harr[i].val_len));
+      RCC(rc, finish, iwxstr_cat(c->xstr, "\n", 1));
+      if (iwxstr_size(c->signed_headers)) {
+        RCC(rc, finish, iwxstr_cat(c->signed_headers, ";", 1));
+      }
+      RCC(rc, finish, iwxstr_cat(c->signed_headers, harr[i].key, harr[i].key_len));
+    }
   }
 
+  RCC(rc, finish, iwxstr_cat(c->xstr, "\n", 1));
+  RCC(rc, finish, iwxstr_cat(c->xstr, iwxstr_ptr(c->signed_headers), iwxstr_size(c->signed_headers)));
   RCC(rc, finish, iwxstr_cat(c->xstr, "\n", 1));
 
 finish:
@@ -355,47 +376,6 @@ static int _sr_header_compare(const void *a, const void *b) {
   const char *p1 = *(const char**) a;
   const char *p2 = *(const char**) b;
   return strcmp(p1, p2);
-}
-
-static iwrc _sr_headers_signed_add(struct _sign_ctx *c) {
-  iwrc rc = 0;
-  int cnt = 0;
-  IWPOOL *pool = 0;
-  IWXSTR *xstr = 0;
-
-  RCB(finish, pool = iwpool_create_empty());
-  RCB(finish, c->signed_headers = iwxstr_new());
-  RCB(finish, xstr = iwxstr_new_printf("content-type;host;x-amz-date"));
-  if (c->req->signed_headers) {
-    RCC(rc, finish, iwxstr_cat(xstr, ";", 1));
-    RCC(rc, finish, iwxstr_cat2(xstr, c->req->signed_headers));
-  }
-
-  const char **tokens = iwpool_split_string(pool, iwxstr_ptr(xstr), ";", true);
-  for (const char **hh = tokens; *hh; ++hh) {
-    ++cnt;
-  }
-
-  qsort(tokens, cnt, sizeof(*tokens), _sr_header_compare);
-
-  for (const char **hh = tokens, *ph = 0; *hh; ++hh) {
-    if (ph && strcmp(*hh, ph) == 0) {
-      continue;
-    }
-    ph = *hh;
-    if (hh != tokens) {
-      RCC(rc, finish, iwxstr_cat(c->xstr, ";", 1));
-      RCC(rc, finish, iwxstr_cat(c->signed_headers, ";", 1));
-    }
-    RCC(rc, finish, iwxstr_cat2(c->xstr, *hh));
-    RCC(rc, finish, iwxstr_cat2(c->signed_headers, *hh));
-  }
-  RCC(rc, finish, iwxstr_cat(c->xstr, "\n", 1));
-
-finish:
-  iwxstr_destroy(xstr);
-  iwpool_destroy(pool);
-  return rc;
 }
 
 static iwrc _sr_payload_hash_add(struct _sign_ctx *c) {
@@ -464,7 +444,6 @@ static iwrc _sign(struct aws4_request *req) {
   RCC(rc, finish, _sr_uri_add(&c));
   RCC(rc, finish, _sr_qs_add(&c));
   RCC(rc, finish, _sr_headers_add(&c));
-  RCC(rc, finish, _sr_headers_signed_add(&c));
   RCC(rc, finish, _sr_payload_hash_add(&c));
 
   _sr_fill_request_hash(xstr, hashx);
@@ -780,7 +759,6 @@ iwrc aws4_request_payload_set(struct aws4_request *req, const struct aws4_reques
   if (payload->amz_target) {
     xcurlreq_hdr_add(&req->xreq, "x-amz-target", IW_LLEN("x-amz-target"), payload->amz_target,
                      strlen(payload->amz_target));
-    req->signed_headers = "x-amz-target";
   }
 
   req->xreq.flags = XCURLREQ_POST;
@@ -829,7 +807,7 @@ iwrc aws4_request_perform(CURL *curl, struct aws4_request *req, char **out, int 
   RCC(rc, finish, _sign(req));
 
   curl_easy_reset(curl);
-  
+
   if (req->verbose) {
     curl_easy_setopt(curl, CURLOPT_VERBOSE, 1L);
   }
