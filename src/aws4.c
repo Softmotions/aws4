@@ -494,7 +494,7 @@ static iwrc _sign(struct aws4_request *req) {
   //                SignedHeaders=SignedHeaders, Signature=signature
   iwxstr_clear(xstr);
   RCC(rc, finish,
-      iwxstr_printf(xstr, "AWS-HMAC-SHA256 Credential=%s/%s/%s/%s/aws4_request, SignedHeaders=%s, Signature=%s",
+      iwxstr_printf(xstr, "AWS4-HMAC-SHA256 Credential=%s/%s/%s/%s/aws4_request, SignedHeaders=%s, Signature=%s",
                     req->aws_key, c.date, req->aws_region, req->service,
                     iwxstr_ptr(c.signed_headers), hashx));
 
