@@ -1,5 +1,7 @@
 # AWS API client library in pure C
 
+**NOTE: Under development, not ready for production use**
+
 AWS4 is a C client library used for signing and sending requests to AWS HTTP APIs (aws4.h).
 Also it offers a simple DynamoDB client API (aws4dd.h) and Distributed Resources Locking API (aws4dl.h).
 
