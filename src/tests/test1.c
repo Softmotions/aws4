@@ -21,7 +21,8 @@ static struct iwn_poller *poller;
 static pthread_barrier_t start_br;
 
 static struct aws4_request_spec request_spec = {
-  .flags          = AWS_SERVICE_DYNAMODB,
+  .flags          = AWS_SERVICE_DYNAMODB | AWS_REQUEST_VERBOSE,
+  //.aws_config_profile = "serverless-admin",
   .aws_region     = "us-east-1",
   .aws_key        = "fakeMyKeyId",
   .aws_secret_key = "fakeSecretAccessKey",
@@ -59,6 +60,7 @@ static iwrc _dynamodb_spawn(void) {
     .on_stdout = _on_dynamodb_output,
     .on_stderr = _on_dynamodb_output,
     .on_exit = _on_dynamodb_exit,
+    .parent_death_signal = SIGTERM,
   }, &dynamodb_pid);
 }
 

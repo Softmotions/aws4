@@ -22,7 +22,7 @@ make
 
 Look into `./src/aws4.h` and `./src/aws4dd.h` for API documentation.
 
-Also look into test cases in `./test` directory.
+Also look into test cases in `./src/tests` directory.
 
 ### Examples
 

@@ -699,6 +699,7 @@ iwrc aws4_request_create(const struct aws4_request_spec *spec, struct aws4_reque
   iwrc rc = 0;
   req->pool = pool;
   req->flags = spec->flags;
+  req->verbose = (spec->flags & AWS_REQUEST_VERBOSE) != 0;
 
   RCC(rc, finish, _creds_load(spec, req));
   RCC(rc, finish, _config_load(spec, req));
@@ -828,6 +829,10 @@ iwrc aws4_request_perform(CURL *curl, struct aws4_request *req, char **out, int 
   RCC(rc, finish, _sign(req));
 
   curl_easy_reset(curl);
+  
+  if (req->verbose) {
+    curl_easy_setopt(curl, CURLOPT_VERBOSE, 1L);
+  }
 
   XCC(cc, finish, curl_easy_setopt(curl, CURLOPT_URL, req->aws_url));
   XCC(cc, finish, curl_easy_setopt(curl, CURLOPT_WRITEFUNCTION, xcurl_body_write_xstr));
@@ -981,7 +986,6 @@ iwrc aws4_request_json(
   if (json_payload) {
     RCB(finish, xstr = iwxstr_new());
     RCC(rc, finish, jbn_as_json(json_payload->json, jbl_xstr_json_printer, xstr, verbose ? JBL_PRINT_PRETTY : 0));
-
     if (verbose) {
       iwlog_info("aws4_request_json | payload: %s", iwxstr_ptr(xstr));
     }
