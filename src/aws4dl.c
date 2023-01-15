@@ -265,6 +265,7 @@ finish:
 
 static void _heartbeat_cancel(void *d) {
   struct aws4dl_lock *lock = d;
+
   pthread_mutex_lock(&lock->mtx);
   if (lock->heartbeat_fd) {
     lock->heartbeat_fd = 0;
@@ -333,7 +334,7 @@ finish:
         .on_cancel = _heartbeat_cancel,
         .poller = lock->acquire_spec.poller,
         .user_data = lock,
-        .timeout_ms = lock_spec.lock_enqueued_ttl_sec / 3,
+        .timeout_ms = 1000UL * lock_spec.lock_enqueued_ttl_sec / 3,
       }, &fd);
       if (!rc2) {
         lock->heartbeat_fd = fd;
@@ -372,7 +373,7 @@ static iwrc _heartbeat_start(struct aws4dl_lock *lock) {
     .on_cancel = _heartbeat_cancel,
     .poller = lock->acquire_spec.poller,
     .user_data = lock,
-    .timeout_ms = lock->acquire_spec.lock_spec.lock_enqueued_ttl_sec / 3,
+    .timeout_ms = 1000UL * lock->acquire_spec.lock_spec.lock_enqueued_ttl_sec / 3,
   }, &lock->heartbeat_fd));
 
   pthread_cond_broadcast(&lock->cond);
@@ -386,15 +387,11 @@ static void _lock_destroy(struct aws4dl_lock *lock) {
   if (!lock) {
     return;
   }
-
   // Stop heartbeat
   pthread_mutex_lock(&lock->mtx);
   if (lock->heartbeat_fd) {
     iwn_poller_remove(lock->acquire_spec.poller, lock->heartbeat_fd);
   }
-  pthread_mutex_unlock(&lock->mtx);
-
-  pthread_mutex_lock(&lock->mtx);
   while (lock->heartbeat_fd) {
     int rci = pthread_cond_wait(&lock->cond, &lock->mtx);
     if (rci) {
@@ -479,7 +476,7 @@ static iwrc _lock_check(struct aws4dl_lock *lock, bool *out_granted) {
       RCC(rc, finish, jbn_as_json(n, jbl_xstr_json_printer, xstr, 0));
       aws4dd_response_destroy(&resp);
       aws4dd_query_op_destroy(&op);
-    } 
+    }
   } while (iwxstr_size(xstr));
 
 finish:
@@ -513,6 +510,8 @@ static iwrc _lock_check_wait(struct aws4dl_lock *lock) {
 
   if (!granted) {
     rc = IW_ERROR_OPERATION_TIMEOUT;
+  } else if (!heartbeat_started && !(lock_spec->flags & AWS4DL_FLAG_HEARTBEAT_NONE)) {
+    RCC(rc, finish, _heartbeat_start(lock));
   }
 
 finish:
@@ -532,7 +531,13 @@ iwrc aws4dl_lock_acquire(const struct aws4dl_lock_acquire_spec *acquire_spec, st
 
   struct aws4dl_lock *lock;
   RCB(finish, lock = iwpool_calloc(sizeof(*lock), pool));
-  pthread_mutex_init(&lock->mtx, 0);
+
+  pthread_mutexattr_t attr;
+  pthread_mutexattr_init(&attr);
+  pthread_mutexattr_settype(&attr, PTHREAD_MUTEX_RECURSIVE);
+  pthread_mutex_init(&lock->mtx, &attr);
+  pthread_mutexattr_destroy(&attr);
+
   pthread_cond_init(&lock->cond, 0);
   lock->pool = pool;
   memcpy(&lock->acquire_spec, acquire_spec, sizeof(*acquire_spec));

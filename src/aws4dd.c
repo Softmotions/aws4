@@ -1614,6 +1614,7 @@ iwrc aws4dd_scan(const struct aws4_request_spec *spec, struct aws4dd_scan *op, s
     .amz_target = "DynamoDB_20120810.Scan",
   }, pool, &resp->data, &resp->status_code));
 
+  *rpp = resp;
 
 finish:
   if (rc && resp) {

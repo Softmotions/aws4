@@ -73,7 +73,7 @@ static iwrc _test_lock_acquire_release1(void) {
       .lock_enqueued_ttl_sec  = 100000, // high enough
       .lock_enqueued_wait_sec = 100000,
       .lock_enqueued_poll_ms  = 100000000,
-      .flags                  = AWS4DL_FLAG_HEARTBEAT_NONE,
+      .flags                  = AWS4DL_FLAG_HEARTBEAT_NONE | AWS4DL_FLAG_TABLE_TTL_NONE,
     }
   };
 
@@ -108,6 +108,7 @@ static iwrc _test_lock_acquire_release2(void) {
 
   // Generate a bunch of expired records
   const int expnum = 25;
+  bool ttl_enabled = false;
   IWPOOL *pool = iwpool_create_empty();
   IWN_ASSERT_FATAL(pool);
 
@@ -125,25 +126,57 @@ static iwrc _test_lock_acquire_release2(void) {
   pthread_cond_destroy(&exp_lock.cond);
   iwpool_destroy(pool);
 
-  sleep(1); // Sleep to expire all previous records 
+  sleep(1); // Sleep to expire all previous records
 
-  // Now try to get a lock
+  // Now try to get a lock and iterate through expired records.
   struct aws4dl_lock *lock = 0;
   struct aws4dl_lock_acquire_spec spec = {
     .request                  = request_spec,
     .poller                   = poller,
     .lock_spec                = {
-      .flags                  = AWS4DL_FLAG_HEARTBEAT_NONE,
-      .lock_enqueued_ttl_sec  = 100000,
+      .table_name             = "aws4dl",
+      .lock_enqueued_ttl_sec  = 10,
       .lock_enqueued_wait_sec = 100000,
       .lock_enqueued_poll_ms  = 100000000,
       .lock_check_page_size   = 10,
+      .flags                  = AWS4DL_FLAG_TABLE_TTL_NONE,
     }
   };
 
   RCC(rc, finish, aws4dl_lock_acquire(&spec, &lock));
-  // In-lock
+  IWN_ASSERT(!aws4dd_ttl_update(&request_spec, spec.lock_spec.table_name, "expiresAt", true, &ttl_enabled));
+  IWN_ASSERT(ttl_enabled);
+
+  // Allow heartbeat to work enough time to expire all records.
+  sleep(20);
+
+  // Verify lock table
+  struct aws4dd_scan *sop = 0;
+  rc = aws4dd_scan_op(&sop, &(struct aws4dd_scan_spec) {
+    .table_name = "aws4dl"
+  });
+  IWN_ASSERT(!rc);
+  if (!rc) {
+    struct aws4dd_response *resp = 0;
+    rc = aws4dd_scan(&request_spec, sop, &resp);
+    IWN_ASSERT(!rc);
+    if (!rc) {
+      JBL_NODE n;
+      uint64_t ctime;
+      iwp_current_time_ms(&ctime, false);
+      ctime /= 1000;
+      // Only two records must be in a table
+      IWN_ASSERT(!jbn_at(resp->data, "/Count", &n) && n->type == JBV_I64 && n->vi64 == 2);
+      IWN_ASSERT(!jbn_at(resp->data, "/Items/1/expiresAt/N", &n) && n->type == JBV_STR);
+      int64_t etime = iwatoi(n->vptr);
+      IWN_ASSERT(etime >= ctime && etime - ctime <= 10);
+    }
+    aws4dd_scan_op_destroy(&sop);
+    aws4dd_response_destroy(&resp);
+  }
+
   RCC(rc, finish, aws4dl_lock_release(&lock));
+
 
 finish:
   return rc;
