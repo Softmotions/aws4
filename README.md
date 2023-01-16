@@ -35,24 +35,23 @@ iwrc rc = 0;
 struct aws4dd_item_put *op = 0;
 struct aws4dd_response *resp = 0;
 
-RCC(rc, finish, aws4dd_item_put_op(&op, &(struct aws4dd_item_put_spec) {
-      .table_name = "Thread",
-      .condition_expression = "ForumName <> :f and Subject <> :s"
-      }));
+aws4dd_item_put_op(&op, &(struct aws4dd_item_put_spec) {
+  .table_name = "Thread",
+  .condition_expression = "ForumName <> :f and Subject <> :s"
+});
 
-RCC(rc, finish, aws4dd_item_put_value(op, "/ExpressionAttributeValues/:f", "S", "Amazon DynamoDB"));
-RCC(rc, finish, aws4dd_item_put_value(op, "/ExpressionAttributeValues/:s", "S", "How do I update multiple items?"));
+aws4dd_item_put_value(op, "/ExpressionAttributeValues/:f", "S", "Amazon DynamoDB");
+aws4dd_item_put_value(op, "/ExpressionAttributeValues/:s", "S", "How do I update multiple items?");
 
-RCC(rc, finish, aws4dd_item_put_value(op, "/Item/LastPostDateTime", "S", "201303190422"));
-RCC(rc, finish, aws4dd_item_put_array(op, "/Item/Tags", "SS", (const char*[]) { "Update", "Multiple", "Help", 0 }));
-RCC(rc, finish, aws4dd_item_put_value(op, "/Item/ForumName", "S", "Amazon DynamoDB"));
-RCC(rc, finish, aws4dd_item_put_value(op, "/Item/Message", "S", "I want to update multiple items in a single call."));
-RCC(rc, finish, aws4dd_item_put_value(op, "/Item/Subject", "S", "How do I update multiple items?"));
-RCC(rc, finish, aws4dd_item_put_value(op, "/Item/LastPostedBy", "S", "fred@example.com"));
+aws4dd_item_put_value(op, "/Item/LastPostDateTime", "S", "201303190422");
+aws4dd_item_put_array(op, "/Item/Tags", "SS", (const char*[]) { "Update", "Multiple", "Help", 0 });
+aws4dd_item_put_value(op, "/Item/ForumName", "S", "Amazon DynamoDB");
+aws4dd_item_put_value(op, "/Item/Message", "S", "I want to update multiple items in a single call.");
+aws4dd_item_put_value(op, "/Item/Subject", "S", "How do I update multiple items?");
+aws4dd_item_put_value(op, "/Item/LastPostedBy", "S", "fred@example.com");
 
-RCC(rc, finish, aws4dd_item_put(&request_spec, op, &resp));
+aws4dd_item_put(&request_spec, op, &resp);
 
-finish:
 aws4dd_response_destroy(&resp);
 aws4dd_item_put_op_destroy(&op);
 return rc;
