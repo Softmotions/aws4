@@ -110,6 +110,13 @@ if (rc) {
 return rc;
 ```
 
+## Tips
+
+To make AWS API calls more efficient you can use a global `aws4_request_spec` structure and 
+specify globaly initialized `curl` handle in it. This will avoid creating a new `curl` handle
+for each request. Note that you should not use a shared `curl` handle in a multi-threaded environment.
+
+
 # License
 ```
 
