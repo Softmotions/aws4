@@ -21,8 +21,7 @@ static struct iwn_poller *poller;
 static pthread_barrier_t start_br;
 
 static struct aws4_request_spec request_spec = {
-  .flags          = AWS_SERVICE_DYNAMODB,
-  //.aws_config_profile = "serverless-admin",
+  .flags          = AWS_SERVICE_DYNAMODB, // | AWS_REQUEST_VERBOSE,
   .aws_region     = "us-east-1",
   .aws_key        = "fakeMyKeyId",
   .aws_secret_key = "fakeSecretAccessKey",
@@ -75,7 +74,7 @@ static iwrc _test_lock_acquire_release1(void) {
       .lock_enqueued_ttl_sec  = 100000, // high enough
       .lock_enqueued_wait_sec = 100000,
       .lock_enqueued_poll_ms  = 100000000,
-      .flags                  = AWS4DL_FLAG_HEARTBEAT_NONE | AWS4DL_FLAG_TABLE_TTL_NONE,
+      .flags                  = AWS4DL_FLAG_HEARTBEAT_NONE | AWS4DL_FLAG_TABLE_TTL_NOAUTO,
     }
   };
 
@@ -97,14 +96,14 @@ static iwrc _test_lock_acquire_release2(void) {
     .poller                   = poller,
     .lock_spec                = {
       .table_name             = "aws4dl",
-      .resource_name          = "resource",
+      .resource_name          = "r",
       .pk_name                = "pk",
       .sk_name                = "sk",
       .lock_check_page_size   = 10,
       .lock_enqueued_ttl_sec  = 0,
       .lock_enqueued_wait_sec = 1,
       .lock_enqueued_poll_ms  = 500,
-      .flags                  = AWS4DL_FLAG_HEARTBEAT_NONE | AWS4DL_FLAG_TABLE_TTL_NONE,
+      .flags                  = AWS4DL_FLAG_HEARTBEAT_NONE | AWS4DL_FLAG_TABLE_TTL_NOAUTO,
     }
   };
 
@@ -141,7 +140,7 @@ static iwrc _test_lock_acquire_release2(void) {
       .lock_enqueued_wait_sec = 100000,
       .lock_enqueued_poll_ms  = 100000000,
       .lock_check_page_size   = 10,
-      .flags                  = AWS4DL_FLAG_TABLE_TTL_NONE,
+      .flags                  = AWS4DL_FLAG_TABLE_TTL_NOAUTO,
     }
   };
 
@@ -170,8 +169,10 @@ static iwrc _test_lock_acquire_release2(void) {
       // Only two records must be in a table
       IWN_ASSERT(!jbn_at(resp->data, "/Count", &n) && n->type == JBV_I64 && n->vi64 == 2);
       IWN_ASSERT(!jbn_at(resp->data, "/Items/1/expiresAt/N", &n) && n->type == JBV_STR);
-      int64_t etime = iwatoi(n->vptr);
-      IWN_ASSERT(etime >= ctime && etime - ctime <= 10);
+      if (n) {
+        int64_t etime = iwatoi(n->vptr);
+        IWN_ASSERT(etime >= ctime && etime - ctime <= 10);
+      }
     }
     aws4dd_scan_op_destroy(&sop);
     aws4dd_response_destroy(&resp);

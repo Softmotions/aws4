@@ -1909,11 +1909,22 @@ iwrc aws4dd_batch_write_array(
   if (*path != '/') {
     return IW_ERROR_INVALID_ARGS;
   }
-  IWXSTR *xstr = iwxstr_new_printf("%s%s", table, path);
-  if (!xstr) {
-    return iwrc_set_errno(IW_ERROR_ALLOC, errno);
+  iwrc rc = 0;
+  JBL_NODE n, n2 = 0;
+  IWXSTR *xstr = iwxstr_new_printf("/RequestItems/%s", table);
+  RCB(finish, xstr);
+
+  RCC(rc, finish, jbn_from_json("{}", &n, op->pool));
+  RCC(rc, finish, _item_put(op->pool, n, path, key, vals));
+
+  if (jbn_at(op->n, iwxstr_ptr(xstr), &n2) || n2->type != JBV_ARRAY) {
+    RCC(rc, finish, jbn_from_json("[]", &n2, op->pool));
+    RCC(rc, finish, jbn_copy_path(n2, "/", op->n, iwxstr_ptr(xstr), true, true, op->pool));
   }
-  iwrc rc = _item_put(op->pool, op->n, iwxstr_ptr(xstr), key, vals);
+
+  jbn_add_item(n2, n);
+
+finish:
   iwxstr_destroy(xstr);
   return rc;
 }
@@ -1925,20 +1936,7 @@ iwrc aws4dd_batch_write_value(
   const char                *key,
   const char                *val
   ) {
-  if (!op || !table || !path || !key || !val) {
-    return IW_ERROR_INVALID_ARGS;
-  }
-  RCR(_name_check(table, AWS4DD_RESOURCE_TABLE));
-  if (*path != '/') {
-    return IW_ERROR_INVALID_ARGS;
-  }
-  IWXSTR *xstr = iwxstr_new_printf("/RequestItems/%s%s", table, path);
-  if (!xstr) {
-    return iwrc_set_errno(IW_ERROR_ALLOC, errno);
-  }
-  iwrc rc = _item_put(op->pool, op->n, iwxstr_ptr(xstr), key, (const char*[]) { val, 0 });
-  iwxstr_destroy(xstr);
-  return rc;
+  return aws4dd_batch_write_array(op, table, path, key, (const char*[]) { val, 0 });
 }
 
 iwrc aws4dd_bach_write(

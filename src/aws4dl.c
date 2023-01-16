@@ -8,6 +8,7 @@
 #include <unistd.h>
 #include <inttypes.h>
 #include <pthread.h>
+#include <assert.h>
 
 static iwrc _lock_table_ensure(struct aws4dl_lock *lock) {
   iwrc rc = 0;
@@ -52,7 +53,7 @@ static iwrc _lock_table_ensure(struct aws4dl_lock *lock) {
       rc = AWS4_API_REQUEST_ERROR;
       goto finish;
     }
-  } else if (!(lock->acquire_spec.lock_spec.flags & AWS4DL_FLAG_TABLE_TTL_NONE)) {
+  } else if (!(lock->acquire_spec.lock_spec.flags & AWS4DL_FLAG_TABLE_TTL_NOAUTO)) {
     bool ttl_enabled = false;
     rc = aws4dd_ttl_update(&request_spec, lock_spec.table_name, "expiresAt", true, &ttl_enabled);
     if (rc) {
@@ -415,18 +416,29 @@ static iwrc _lock_check(struct aws4dl_lock *lock, bool *out_granted) {
   struct aws4dd_response *resp = 0;
   struct aws4dl_lock_spec *lock_spec = &lock->acquire_spec.lock_spec;
 
-  char *psk;
   uint64_t ctime;
+  char *psk, *pkpath[2], *skpath[2];
+  JBL_NODE nd_payload, nd_items; // Pending deletion array
 
   IWXSTR *xstr = 0;
   IWPOOL *pool_local = 0;
 
   RCB(finish, pool_local = iwpool_create_empty());
+
+  RCC(rc, finish,
+      jbn_from_json_printf(&nd_payload, pool_local, "{\"RequestItems\":{\"%s\":[]}}", lock_spec->table_name));
+  nd_items = nd_payload->child->child;
+  assert(nd_items);
+
   RCB(finish, xstr = iwxstr_new()); // Exclusive start key json holder
   RCC(rc, finish, iwp_current_time_ms(&ctime, false));
   ctime /= 1000;
 
   RCB(finish, psk = iwpool_printf(pool_local, "/%s/S", lock_spec->sk_name));
+  RCB(finish, pkpath[0] = iwpool_printf(pool_local, "/%s", lock_spec->pk_name));
+  RCB(finish, pkpath[1] = iwpool_printf(pool_local, "/DeleteRequest/Key/%s", lock_spec->pk_name));
+  RCB(finish, skpath[0] = iwpool_printf(pool_local, "/%s", lock_spec->sk_name));
+  RCB(finish, skpath[1] = iwpool_printf(pool_local, "/DeleteRequest/Key/%s", lock_spec->sk_name));
 
   do {
     JBL_NODE n, items, nsk;
@@ -460,12 +472,19 @@ static iwrc _lock_check(struct aws4dl_lock *lock, bool *out_granted) {
       }
       uint64_t expiresAt = iwatoi(n->vptr);
       if (expiresAt < ctime) {
-        ; // Skip expired records
+        if (!(lock->acquire_spec.lock_spec.flags & AWS4DL_FLAG_TABLE_TTL_PASSIVE)) {
+          // Save expired node for farther deletion.
+          JBL_NODE nd_item;
+          RCC(rc, finish, jbn_from_json("{}", &nd_item, pool_local));
+          RCC(rc, finish, jbn_copy_path(it, pkpath[0], nd_item, pkpath[1], true, false, pool_local));
+          RCC(rc, finish, jbn_copy_path(it, skpath[0], nd_item, skpath[1], true, false, pool_local));
+          jbn_add_item(nd_items, nd_item);
+        }
       } else if (strcmp(lock->ticket, nsk->vptr) == 0) {
         *out_granted = true;
-        goto finish;
+        break;
       } else {
-        goto finish;
+        break;
       }
     }
 
@@ -476,6 +495,15 @@ static iwrc _lock_check(struct aws4dl_lock *lock, bool *out_granted) {
       aws4dd_query_op_destroy(&op);
     }
   } while (iwxstr_size(xstr));
+
+  if (nd_items->child) { // We have expired items to delete
+    struct aws4_request_spec rspec = lock->acquire_spec.request;
+    rspec.flags |= AWS_REQUEST_ACCEPT_ANY_STATUS_CODE;
+    RCC(rc, finish, aws4_request_json(&rspec, &(struct aws4_request_json_payload) {
+      .json = nd_payload,
+      .amz_target = "DynamoDB_20120810.BatchWriteItem",
+    }, pool_local, &resp->data, &resp->status_code));
+  }
 
 finish:
   aws4dd_response_destroy(&resp);
@@ -544,7 +572,7 @@ iwrc aws4dl_lock_acquire(const struct aws4dl_lock_acquire_spec *acquire_spec, st
   struct aws4dl_lock_spec *lock_spec = &acquire->lock_spec;
 
   if (!lock_spec->resource_name) {
-    lock_spec->resource_name = "resource";
+    lock_spec->resource_name = "r";
   }
 
   if (!lock_spec->table_name) {

@@ -4,13 +4,14 @@
 
 #include <iwnet/iwn_poller.h>
 
-#define AWS4DL_FLAG_HEARTBEAT_NONE 0x01U ///< Do not perform periodical locking heartbeat.
-#define AWS4DL_FLAG_HEARTBEAT_ONCE 0x02U ///< Do only one locking heartbeat iteration. Used for testing.
-#define AWS4DL_FLAG_TABLE_TTL_NONE 0x04U ///< Disable DynamoDB TTL `expiresAt` table attribute checking.
+#define AWS4DL_FLAG_HEARTBEAT_NONE    0x01U ///< Do not perform periodical locking heartbeat.
+#define AWS4DL_FLAG_HEARTBEAT_ONCE    0x02U ///< Do only one locking heartbeat iteration. Used for testing.
+#define AWS4DL_FLAG_TABLE_TTL_NOAUTO  0x04U ///< Disable DynamoDB TTL feature for `expiresAt` attribute.
+#define AWS4DL_FLAG_TABLE_TTL_PASSIVE 0x08U ///< Disable proactive deteletion of expired lock items.
 
 /// Distributed lock specification.
 struct aws4dl_lock_spec {
-  const char *resource_name;          ///< Locked resource name. Default: `resource`.
+  const char *resource_name;          ///< Locked resource name. Default: `r`.
   const char *table_name;             ///< Table name to store locking state. Default: `aws4dl`.
   const char *pk_name;                ///< Partition string key attribute name. Default: `pk`.
   const char *sk_name;                ///< Sort string key attribute name. Default: `sk`.
