@@ -2,6 +2,7 @@
 
 #include <iowow/iwjson.h>
 #include <iowow/iwarr.h>
+#include <iowow/iwp.h>
 #include <iwnet/iwn_pairs.h>
 
 #include <errno.h>
@@ -247,6 +248,51 @@ finish:
   return rc;
 }
 
+static iwrc _table_await_active(const struct aws4_request_spec *spec, const char *table_name) {
+  int64_t time_sleep = 500;           // 0.5 sec initially
+  int64_t time_wait = 5L * 60 * 1000; // 5min
+  int max_failures = 10;
+
+  while (time_wait > 0) {
+    iwrc rc = 0;
+
+    RCR(iwp_sleep(time_sleep));
+    time_wait -= time_sleep;
+
+    if (time_sleep < 10000) {
+      time_sleep *= 2;
+    }
+
+    JBL_NODE n;
+    struct aws4dd_response *resp = 0;
+
+    RCC(rc, fail, aws4dd_table_describe(spec, table_name, &resp));
+    RCC(rc, fail, jbn_at(resp->data, "/Table/TableStatus", &n));
+    if (n->type != JBV_STR) {
+      rc = IW_ERROR_UNEXPECTED_RESPONSE;
+      goto fail;
+    }
+
+    if (strcmp(n->vptr, "ACTIVE") == 0) {
+      aws4dd_response_destroy(&resp);
+      return 0;
+    }
+
+    aws4dd_response_destroy(&resp);
+    continue;
+
+fail:
+    iwlog_ecode_warn(rc, "AWS4 | Failed to get status of table: %s", table_name);
+    aws4dd_response_destroy(&resp);
+    if (--max_failures < 0) {
+      return rc;
+    }
+  }
+
+  iwlog_ecode_error(IW_ERROR_OPERATION_TIMEOUT, "AWS4 | Timeout waiting for ACTIVE status of '%s' table", table_name);
+  return IW_ERROR_OPERATION_TIMEOUT;
+}
+
 iwrc aws4dd_table_create(
   const struct aws4_request_spec *spec,
   struct aws4dd_table_create     *op,
@@ -255,6 +301,7 @@ iwrc aws4dd_table_create(
   if (!spec || !op || !rpp) {
     return IW_ERROR_INVALID_ARGS;
   }
+
   *rpp = 0;
   iwrc rc = 0;
 
@@ -403,7 +450,7 @@ iwrc aws4dd_table_create(
     for (pair = op->tags.first; pair; pair = pair->next) {
       RCC(rc, finish, jbn_add_item_obj(n2, 0, &n3, op->pool));
       RCC(rc, finish, jbn_add_item_str(n3, "Key", pair->key, pair->key_len, 0, op->pool));
-      RCC(rc, finish, jbn_add_item_str(n3, "Valuw", pair->val, pair->val_len, 0, op->pool));
+      RCC(rc, finish, jbn_add_item_str(n3, "Value", pair->val, pair->val_len, 0, op->pool));
     }
   }
 
@@ -412,7 +459,13 @@ iwrc aws4dd_table_create(
     .amz_target = "DynamoDB_20120810.CreateTable"
   }, op->pool, &resp->data, &resp->status_code));
 
-  *rpp = resp;
+
+  if (op->flags & AWS4DD_TABLE_DONT_AWAIT_CREATION) {
+    *rpp = resp;
+  } else {
+    RCC(rc, finish, _table_await_active(spec, op->name));
+    *rpp = resp;
+  }
 
 finish:
   if (rc && resp) {
@@ -617,7 +670,9 @@ iwrc aws4dd_table_update(
     }
   }
 
-  RCC(rc, finish, jbn_add_item_arr(n, "GlobalSecondaryIndexUpdates", &n22, op->pool));
+  if (op->idx_create.name || op->idx_delete || iwulist_length(&op->idx_mod_list)) {
+    RCC(rc, finish, jbn_add_item_arr(n, "GlobalSecondaryIndexUpdates", &n22, op->pool));
+  }
 
   if (op->idx_create.name) {
     RCC(rc, finish, jbn_add_item_obj(n22, 0, &n2, op->pool));

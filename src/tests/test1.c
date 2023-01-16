@@ -22,7 +22,6 @@ static pthread_barrier_t start_br;
 
 static struct aws4_request_spec request_spec = {
   .flags          = AWS_SERVICE_DYNAMODB | AWS_REQUEST_VERBOSE,
-  //.aws_config_profile = "serverless-admin",
   .aws_region     = "us-east-1",
   .aws_key        = "fakeMyKeyId",
   .aws_secret_key = "fakeSecretAccessKey",
@@ -281,6 +280,7 @@ finish:
 static iwrc _test_table_operations(void) {
   iwrc rc = 0;
   struct aws4dd_table_create *op = 0;
+  struct aws4dd_response *resp = 0;
 
   RCC(rc, finish, aws4dd_table_create_op(&op, &(struct aws4dd_table_create_spec) {
     .name = "Thread",
@@ -298,7 +298,6 @@ static iwrc _test_table_operations(void) {
   }));
   RCC(rc, finish, aws4dd_table_tag_add(op, "Owner", "BlueTeam"));
 
-  struct aws4dd_response *resp = 0;
   RCC(rc, finish, aws4dd_table_create(&request_spec, op, &resp));
   IWN_ASSERT_FATAL(rc == 0);
   IWN_ASSERT_FATAL(resp->data);
@@ -314,11 +313,12 @@ static iwrc _test_table_operations(void) {
   RCC(rc, finish, _test_table_query());
   RCC(rc, finish, _test_table_update());
   RCC(rc, finish, _test_table_item_delete());
-
   RCC(rc, finish, aws4dd_table_delete(&request_spec, "Thread", &resp));
   aws4dd_response_destroy(&resp);
 
 finish:
+  aws4dd_table_create_op_destroy(&op);
+  aws4dd_response_destroy(&resp);
   return rc;
 }
 

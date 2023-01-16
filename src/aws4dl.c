@@ -136,6 +136,7 @@ IW_STATIC_NTESTS iwrc _ticket_acquire(struct aws4dl_lock *lock) {
     return iwrc_set_errno(IW_ERROR_ALLOC, errno);
   }
 
+
   JBL_NODE n;
   struct aws4dd_response *resp = 0;
   struct aws4dd_item_update *op = 0;
@@ -150,19 +151,18 @@ IW_STATIC_NTESTS iwrc _ticket_acquire(struct aws4dl_lock *lock) {
       .values          = AWS4DD_RETURN_VALUES_UPDATED_NEW
     }
   };
-
   RCB(finish, uspec.condition_expression = iwpool_printf(lpool, "attribute_exists(%s)",
                                                          lock->acquire_spec.lock_spec.pk_name));
-  RCC(rc, finish, aws4dd_item_update_op(&op, &uspec));
-  RCC(rc, finish, aws4dd_item_update_value(op, "/ExpressionAttributeValues/:ticketNumber", "N", "1"));
-
   RCB(finish, upk = iwpool_printf(lpool, "/Key/%s", lock->acquire_spec.lock_spec.pk_name));
-  RCC(rc, finish, aws4dd_item_update_value(op, upk, "S", "e204f236-031c-4244-9634-cdd2aaf86960"));
-
   RCB(finish, usk = iwpool_printf(lpool, "/Key/%s", lock->acquire_spec.lock_spec.sk_name));
-  RCC(rc, finish, aws4dd_item_update_value(op, usk, "S", "bb7a739b-8ba7-44fd-8164-fbfe9f98bd0b"));
 
 again:
+  aws4dd_item_update_op_destroy(&op);
+
+  RCC(rc, finish, aws4dd_item_update_op(&op, &uspec));
+  RCC(rc, finish, aws4dd_item_update_value(op, "/ExpressionAttributeValues/:ticketNumber", "N", "1"));
+  RCC(rc, finish, aws4dd_item_update_value(op, upk, "S", "e204f236-031c-4244-9634-cdd2aaf86960"));
+  RCC(rc, finish, aws4dd_item_update_value(op, usk, "S", "bb7a739b-8ba7-44fd-8164-fbfe9f98bd0b"));
   RCC(rc, finish, aws4dd_item_update(&rspec, op, &resp));
 
   switch (resp->status_code) {

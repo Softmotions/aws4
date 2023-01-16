@@ -380,7 +380,7 @@ static int _sr_header_compare(const void *a, const void *b) {
 
 static iwrc _sr_payload_hash_add(struct _sign_ctx *c) {
   if (c->xreq->payload_len == 0) {
-    return iwxstr_cat(c->xstr, "\n", 1);
+    return 0;
   }
   char hash[br_sha256_SIZE * 2 + 1];
   uint8_t hash_bits[br_sha256_SIZE];
@@ -390,7 +390,6 @@ static iwrc _sr_payload_hash_add(struct _sign_ctx *c) {
   br_sha256_out(&ctx, hash_bits);
   iwbin2hex(hash, sizeof(hash), hash_bits, sizeof(hash_bits));
   RCR(iwxstr_cat(c->xstr, hash, sizeof(hash) - 1));
-  RCR(iwxstr_cat(c->xstr, "\n", 1));
   return 0;
 }
 
@@ -448,12 +447,21 @@ static iwrc _sign(struct aws4_request *req) {
 
   _sr_fill_request_hash(xstr, hashx);
 
+  if (req->verbose) {
+    iwlog_info("AWS4 | Canonical request:\n%s", iwxstr_ptr(xstr));
+  }
+
   // String to sign
   iwxstr_clear(xstr2);
   RCC(rc, finish, iwxstr_cat(xstr2, "AWS4-HMAC-SHA256\n", IW_LLEN("AWS4-HMAC-SHA256\n")));
   RCC(rc, finish, iwxstr_printf(xstr2, "%s\n", c.datetime));
   RCC(rc, finish, iwxstr_printf(xstr2, "%s/%s/%s/aws4_request\n", c.date, req->aws_region, req->service));
   RCC(rc, finish, iwxstr_cat(xstr2, hashx, (size_t) br_sha256_SIZE * 2));
+
+
+  if (req->verbose) {
+    iwlog_info("AWS4 | String to sign:\n%s", iwxstr_ptr(xstr2));
+  }
 
   // Calculate signing key
   iwxstr_clear(xstr);
@@ -864,6 +872,10 @@ iwrc aws4_request_perform(CURL *curl, struct aws4_request *req, char **out, int 
 
     break;
   }
+  
+  if (req->verbose) {
+    iwlog_info("AWS4 | Response: %s", iwxstr_ptr(xstr));
+  }
 
 finish:
   if (rc) {
@@ -965,7 +977,7 @@ iwrc aws4_request_json(
     RCB(finish, xstr = iwxstr_new());
     RCC(rc, finish, jbn_as_json(json_payload->json, jbl_xstr_json_printer, xstr, verbose ? JBL_PRINT_PRETTY : 0));
     if (verbose) {
-      iwlog_info("aws4_request_json | payload: %s", iwxstr_ptr(xstr));
+      iwlog_info("AWS4 | Payload: %s", iwxstr_ptr(xstr));
     }
 
     payload = (struct aws4_request_payload) {
