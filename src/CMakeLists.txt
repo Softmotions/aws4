@@ -42,7 +42,8 @@ include(AddIWNET)
 
 set(LINK_LIBS IWNET::static ${CURL_LIBRARIES})
 
-include_directories(${CMAKE_CURRENT_SOURCE_DIR} ${CMAKE_BINARY_DIR}/include)
+include_directories(${CMAKE_CURRENT_SOURCE_DIR} ${CMAKE_BINARY_DIR}/include
+                    ${IOWOW_INCLUDE_DIRS} ${IWNET_INCLUDE_DIRS})
 add_definitions(-D_LARGEFILE_SOURCE)
 
 file(GLOB ALL_SRC ${CMAKE_CURRENT_SOURCE_DIR}/*.c)
