@@ -1,3 +1,7 @@
+if(TARGET IWNET::static) 
+  return()
+endif()
+
 include(ExternalProject)
 
 if(NOT DEFINED IWNET_URL)

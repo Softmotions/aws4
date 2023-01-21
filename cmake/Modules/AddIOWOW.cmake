@@ -1,3 +1,7 @@
+if(TARGET IOWOW::static) 
+  return()
+endif()
+
 include(ExternalProject)
 
 if(NOT DEFINED IOWOW_URL)

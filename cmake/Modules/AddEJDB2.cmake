@@ -1,3 +1,7 @@
+if(TARGET EJDB2::static) 
+  return()
+endif()
+
 include(ExternalProject)
 
 if(NOT DEFINED EJDB2_URL)
