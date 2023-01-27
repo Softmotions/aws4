@@ -117,7 +117,6 @@ To make AWS API calls more efficient you can use a global `aws4_request_spec` st
 specify globaly initialized `curl` handle in it. This will avoid creating a new `curl` handle
 for each request. Note that you should not use a shared `curl` handle in a multi-threaded environment.
 
-
 ## IWSTART
 
 IWSTART is an automatic CMake initial project generator for C projects based on 
@@ -125,7 +124,8 @@ IWSTART is an automatic CMake initial project generator for C projects based on
 [iwnet](https://github.com/Softmotions/iwnet) / 
 [ejdb2](https://github.com/Softmotions/ejdb) / 
 [aws4](https://github.com/Softmotions/aws4) libs.
-You may use it to create a new C project from scratch based on iowow / iwnet / ejdb2 / aws4 libs.
+You may use it to create a new C project template from scratch based on thiese libs.
+
 
 # License
 ```
