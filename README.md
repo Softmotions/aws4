@@ -1,7 +1,9 @@
 # AWS API client library in pure C
 
 AWS4 is a C client library used for signing and sending requests to AWS HTTP APIs (aws4.h).
-Also it offers a simple DynamoDB client API (aws4dd.h) and Distributed Resources Locking API (aws4dl.h).
+Also it offers a simple DynamoDB client API (aws4dd.h) and **Distributed Resources Locking API (aws4dl.h)**.
+
+Softmotions AWS4 library is very lightweight and It is not bloated with tons of dependencies.
 
 ## Prerequisites
 
@@ -9,7 +11,7 @@ Also it offers a simple DynamoDB client API (aws4dd.h) and Distributed Resources
 * gcc or clang C11 compiler (tested on clang v14 / gcc v11) 
 * cmake v3.18+, make or ninja
 
-## Building
+## How to build
 
 ```sh
 git clone https://github.com/Softmotions/aws4
