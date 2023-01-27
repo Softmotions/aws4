@@ -119,7 +119,7 @@ for each request. Note that you should not use a shared `curl` handle in a multi
 
 ## IWSTART
 
-IWSTART is an automatic CMake initial project generator for C projects based on 
+[IWSTART](https://github.com/Softmotions/iwstart) is an automatic CMake initial project generator for C projects based on 
 [iowow](https://github.com/Softmotions/iowow) / 
 [iwnet](https://github.com/Softmotions/iwnet) / 
 [ejdb2](https://github.com/Softmotions/ejdb) / 
