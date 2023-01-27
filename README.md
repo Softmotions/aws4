@@ -28,7 +28,7 @@ Also look into test cases in `./src/tests` directory.
 
 ### Examples
 
-#### DynamoDB Put Item example.
+#### DynamoDB API Put Item
 
 ```c
 #include <aws4/aws4dd.h>
@@ -59,7 +59,7 @@ aws4dd_item_put_op_destroy(&op);
 return rc;
 ```
 
-#### Example of using a low level universal AWS4 API
+#### Low level universal AWS4 API
 
 ```c
 iwrc rc = 0;
@@ -88,7 +88,7 @@ free(out);
 return rc;
 ```
 
-#### Distributed Resources Locking API example
+#### Distributed Resources Locking API
 
 ```c
 iwrc rc = 0;
