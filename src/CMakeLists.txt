@@ -54,13 +54,14 @@ configure_file(${CMAKE_CURRENT_SOURCE_DIR}/config.h.in
 add_library(aws4_s ${ALL_SRC})
 add_dependencies(aws4_s generated)
 
+list(APPEND PUB_HDRS ${CMAKE_CURRENT_SOURCE_DIR}/aws4.h
+     ${CMAKE_CURRENT_SOURCE_DIR}/aws4dd.h ${CMAKE_CURRENT_SOURCE_DIR}/aws4dl.h)
+
 target_link_libraries(aws4_s PUBLIC ${LINK_LIBS})
 set_target_properties(
   aws4_s
   PROPERTIES VERSION ${PROJECT_VERSION}
-             PUBLIC_HEADER ${CMAKE_CURRENT_SOURCE_DIR}/aws4.h
-             ${CMAKE_CURRENT_SOURCE_DIR}/aws4dd.h
-             ${CMAKE_CURRENT_SOURCE_DIR}/aws4dl.h
+             PUBLIC_HEADER "${PUB_HDRS}"
              OUTPUT_NAME aws4-${PROJECT_VERSION_MAJOR})
 
 if(OWNER_PROJECT_NAME)
