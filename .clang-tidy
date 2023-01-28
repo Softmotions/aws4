@@ -20,5 +20,7 @@ Checks:    >
   -google-readability-todo,
   -misc-unused-parameters,
   -performance-no-int-to-ptr,
+  -modernize-macro-to-enum,
+  -bugprone-assignment-in-if-condition,
 
 ...
