@@ -59,6 +59,33 @@ aws4dd_item_put_op_destroy(&op);
 return rc;
 ```
 
+#### DynamoDB API Query
+
+```c
+
+RCC(rc, finish, aws4dd_query_op(&op, &(struct  aws4dd_query_spec) {
+  .table_name = s->spec.service_table,
+  .key_condition_expression = "kind = :kind",
+  .filter_expression = "ttl <= :ttl",
+  .projection_expression = "kind",
+  .limit = 1,
+  .consistent_read = true,
+}));
+
+RCC(rc, finish, aws4dd_query_value(op, "/ExpressionAttributeValues/:kind", "S", s->spec.kind));
+RCC(rc, finish, aws4dd_query_value(op, "/ExpressionAttributeValues/:ttl", "N", ttl));
+RCC(rc, finish, aws4dd_query(&s->spec.request_spec, op, &resp));
+
+if (!jbn_at(resp->data, "/Items/0", &n) || n->type != JBV_OBJECT) {
+  *out = false;
+} else {
+  *out = true;
+}
+
+...
+
+```
+
 #### Low level universal AWS4 API
 
 ```c
