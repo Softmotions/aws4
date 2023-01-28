@@ -1,3 +1,10 @@
+aws4 (1.0.1) RELEASED;
+
+  * Added aws4dd_table_await_active()
+  * Fixed race condition on aws distributed lock table creation
+
+ -- Anton Adamansky <adamansky@gmail.com>  Sat, 28 Jan 2023 17:02:29 +0200
+
 aws4 (1.0.0) RELEASED;
 
   * Initial release.

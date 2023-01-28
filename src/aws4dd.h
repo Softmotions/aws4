@@ -111,6 +111,13 @@ IW_EXPORT iwrc aws4dd_table_create(
   struct aws4dd_table_create     *op,
   struct aws4dd_response        **rpp);
 
+/// Waits while table will be created.
+/// @param table_name [in] Table name.
+/// @param max_wait_sec [in] Maximum wait time in seconds. If 0 then default value will be used (5min)
+IW_EXPORT iwrc aws4dd_table_await_active(
+  const struct aws4_request_spec *spec, const char *table_name,
+  int max_wait_sec);
+
 //
 // DescribeTable
 //

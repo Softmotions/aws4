@@ -49,6 +49,7 @@ static iwrc _lock_table_ensure(struct aws4dl_lock *lock) {
         rc = AWS4_API_REQUEST_ERROR;
         goto finish;
       }
+      RCC(rc, finish, aws4dd_table_await_active(&request_spec, lock_spec.table_name, 0));
     } else {
       rc = AWS4_API_REQUEST_ERROR;
       goto finish;

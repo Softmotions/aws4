@@ -248,10 +248,13 @@ finish:
   return rc;
 }
 
-static iwrc _table_await_active(const struct aws4_request_spec *spec, const char *table_name) {
-  int64_t time_sleep = 500;           // 0.5 sec initially
-  int64_t time_wait = 5L * 60 * 1000; // 5min
-  int max_failures = 10;
+static iwrc _table_await_active(const struct aws4_request_spec *spec, const char *table_name, int max_wait_sec) {
+  int max_failures = 10;    // Max number of failure retries
+  int64_t time_sleep = 500; // 0.5 sec initially
+  int64_t time_wait = 1000L * max_wait_sec;
+  if (time_wait <= 0) {
+    time_wait = 1000L * 60 * 5; // 5 min by default
+  }
 
   while (time_wait > 0) {
     iwrc rc = 0;
@@ -463,7 +466,7 @@ iwrc aws4dd_table_create(
   if (op->flags & AWS4DD_TABLE_DONT_AWAIT_CREATION) {
     *rpp = resp;
   } else {
-    RCC(rc, finish, _table_await_active(spec, op->name));
+    RCC(rc, finish, _table_await_active(spec, op->name, 0));
     *rpp = resp;
   }
 
@@ -472,6 +475,10 @@ finish:
     iwpool_destroy(resp->pool);
   }
   return rc;
+}
+
+iwrc aws4dd_table_await_active(const struct aws4_request_spec *spec, const char *table_name, int max_wait_sec) {
+  return _table_await_active(spec, table_name, max_wait_sec);
 }
 
 //
