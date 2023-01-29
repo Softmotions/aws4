@@ -307,6 +307,10 @@ IW_EXPORT iwrc aws4dd_item_put_value(
   const char             *key,
   const char             *val);
 
+/// Sets an /Item or /ExpressionAttributeValues integers parts to the item.
+/// Example: aws4dd_item_put_i64(op, "/Item/Id", 101);
+IW_EXPORT iwrc aws4dd_item_put_value_i64(struct aws4dd_item_put *op, const char *path, int64_t val);
+
 /// Add key-value pair to the given ExpressionAttributeNames part of ItemPut operation.
 /// @param op ItemPut operation
 /// @param key ExpressionAttributeNames key
@@ -361,6 +365,10 @@ IW_EXPORT iwrc aws4dd_item_update_value(
   const char                *path,
   const char                *key,
   const char                *val);
+
+/// Sets an /Key or /ExpressionAttributeValues integers parts to the item.
+/// Example: aws4dd_item_update_i64(op, "/Key/Id", 101);
+IW_EXPORT iwrc aws4dd_item_update_value_i64(struct aws4dd_item_update *op, const char *path, int64_t val);
 
 /// Add key-value pair to the given ExpressionAttributeNames part of ItemUpdate operation.
 /// @param op ItemUpdate operation
@@ -427,6 +435,18 @@ IW_EXPORT iwrc aws4dd_batch_write_value(
   const char                *key,
   const char                *val);
 
+/// Adds a new PutRequest/DeleteRequest to the BatchWriteItem operation.
+///
+/// Example:
+///
+///  aws4dd_batch_write_value_i64(op, "MyTable", "/PutRequest/Item/Id", 101);
+///
+IW_EXPORT iwrc aws4dd_batch_write_value_i64(
+  struct aws4dd_item_update *op,
+  const char                *table,
+  const char                *path,
+  int64_t                    val);
+
 /// Executes a BatchWriteItem operation.
 /// NOTE: \c rpp must be destroyed by aws4dd_response_destroy().
 IW_EXPORT iwrc aws4dd_bach_write(
@@ -474,6 +494,9 @@ IW_EXPORT iwrc aws4dd_item_get_key_value(
   const char             *path,
   const char             *key,
   const char             *value);
+
+/// Sets /Key/ part of ItemGet operation.
+IW_EXPORT iwrc aws4dd_item_get_key_value_i64(struct aws4dd_item_get *op, const char *path, int64_t val);
 
 /// Executes ItemGet operation.
 /// NOTE: \c rpp must be destroyed by aws4dd_response_destroy().
@@ -526,6 +549,10 @@ IW_EXPORT iwrc aws4dd_query_expression_attr_name(struct aws4dd_query *op, const 
 /// Adds value to the /ExpressionAttributeValues or part of Query operation.
 /// Example: aws4dd_query_value(op, "/ExpressionAttributeValues/:v1", "S", "Amazon DynamoDB")
 IW_EXPORT iwrc aws4dd_query_value(struct aws4dd_query *op, const char *path, const char *key, const char *value);
+
+/// Adds value to the /ExpressionAttributeValues or part of Query operation.
+/// Example: aws4dd_query_value_i64(op, "/ExpressionAttributeValues/:v1", 123)
+IW_EXPORT iwrc aws4dd_query_value_i64(struct aws4dd_query *op, const char *path, int64_t value);
 
 /// Adds values to the /ExpressionAttributeValues or part of Query operation.
 /// Example: aws4dd_query_array(op, "/ExpressionAttributeValues/:v1", "SS",
@@ -583,6 +610,10 @@ IW_EXPORT iwrc aws4dd_scan_array(struct aws4dd_scan *op, const char *path, const
 /// Example: aws4dd_scan_value(op, "/ExpressionAttributeValues/:v1", "S", "Amazon DynamoDB")
 IW_EXPORT iwrc aws4dd_scan_value(struct aws4dd_scan *op, const char *path, const char *key, const char *val);
 
+/// Sets an /ExclusiveStartKey or /ExpressionAttributeValues parts to the item.
+/// Example: aws4dd_scan_i64(op, "/ExpressionAttributeValues/:v1", 123)
+IW_EXPORT iwrc aws4dd_scan_value_i64(struct aws4dd_scan *op, const char *path, int64_t val);
+
 /// Executes a given Scan operation.
 /// NOTE: \c rpp must be destroyed by aws4dd_response_destroy).
 IW_EXPORT iwrc aws4dd_scan(const struct aws4_request_spec *spec, struct aws4dd_scan *op, struct aws4dd_response **rpp);
@@ -622,6 +653,9 @@ IW_EXPORT iwrc aws4dd_item_delete_expression_attr_name(
 IW_EXPORT iwrc aws4dd_item_delete_value(
   struct aws4dd_item_delete *op, const char *path,
   const char *key, const char *value);
+
+/// Sets /Key or /ExpressionAttributeValues part of DeleteItem operation.
+IW_EXPORT iwrc aws4dd_item_delete_value_i64(struct aws4dd_item_delete *op, const char *path, int64_t val);
 
 /// Sets /Key or /ExpressionAttributeValues part of DeleteItem operation.
 IW_EXPORT iwrc aws4dd_item_delete_array(

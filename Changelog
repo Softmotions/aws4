@@ -1,3 +1,9 @@
+aws4 (1.0.2) UNRELEASED;
+
+  * Added convenient dynamodb api methods xxx_value_i64(...)
+
+ -- Anton Adamansky <adamansky@gmail.com>  Sun, 29 Jan 2023 22:18:10 +0200
+
 aws4 (1.0.1) RELEASED;
 
   * Added aws4dd_table_await_active()

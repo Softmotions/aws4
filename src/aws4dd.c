@@ -3,6 +3,8 @@
 #include <iowow/iwjson.h>
 #include <iowow/iwarr.h>
 #include <iowow/iwp.h>
+#include <iowow/iwconv.h>
+
 #include <iwnet/iwn_pairs.h>
 
 #include <errno.h>
@@ -1095,6 +1097,12 @@ iwrc aws4dd_item_put_value(
   return aws4dd_item_put_array(op, path, key, (const char*[]) { val, 0 });
 }
 
+iwrc aws4dd_item_put_value_i64(struct aws4dd_item_put *op, const char *path, int64_t val) {
+  char nbuf[IWNUMBUF_SIZE];
+  iwitoa(val, nbuf, sizeof(nbuf));
+  return aws4dd_item_put_value(op, path, "N", nbuf);
+}
+
 iwrc aws4dd_item_put_expression_attr_name(struct aws4dd_item_put *op, const char *key, const char *val) {
   iwrc rc = 0;
   JBL_NODE n, n2;
@@ -1258,6 +1266,12 @@ iwrc aws4dd_item_get_key_value(
   return aws4dd_item_get_key_array(op, path, key, (const char*[]) { value, 0 });
 }
 
+iwrc aws4dd_item_get_key_value_i64(struct aws4dd_item_get *op, const char *path, int64_t val) {
+  char nbuf[IWNUMBUF_SIZE];
+  iwitoa(val, nbuf, sizeof(nbuf));
+  return aws4dd_item_get_key_value(op, path, "N", nbuf);
+}
+
 iwrc aws4dd_item_get(
   const struct aws4_request_spec *spec,
   struct aws4dd_item_get         *op,
@@ -1399,6 +1413,12 @@ iwrc aws4dd_query_array(struct aws4dd_query *op, const char *path, const char *k
 
 iwrc aws4dd_query_value(struct aws4dd_query *op, const char *path, const char *key, const char *value) {
   return aws4dd_query_array(op, path, key, (const char*[]) { value, 0 });
+}
+
+iwrc aws4dd_query_value_i64(struct aws4dd_query *op, const char *path, int64_t value) {
+  char nbuf[IWNUMBUF_SIZE];
+  iwitoa(value, nbuf, sizeof(nbuf));
+  return aws4dd_query_value(op, path, "N", nbuf);
 }
 
 iwrc aws4dd_query_exclusive_start_key(struct aws4dd_query *op, JBL_NODE key) {
@@ -1598,6 +1618,12 @@ iwrc aws4dd_scan_value(struct aws4dd_scan *op, const char *path, const char *key
   return aws4dd_scan_array(op, path, key, (const char*[]) {});
 }
 
+iwrc aws4dd_scan_value_i64(struct aws4dd_scan *op, const char *path, int64_t val) {
+  char nbuf[IWNUMBUF_SIZE];
+  iwitoa(val, nbuf, sizeof(nbuf));
+  return aws4dd_scan_value(op, path, "N", nbuf);
+}
+
 iwrc aws4dd_scan(const struct aws4_request_spec *spec, struct aws4dd_scan *op, struct aws4dd_response **rpp) {
   if (!spec || !op || !rpp) {
     return IW_ERROR_INVALID_ARGS;
@@ -1758,6 +1784,12 @@ iwrc aws4dd_item_update_value(
   const char                *val
   ) {
   return aws4dd_item_update_array(op, path, key, (const char*[]) { val, 0 });
+}
+
+iwrc aws4dd_item_update_value_i64(struct aws4dd_item_update *op, const char *path, int64_t val) {
+  char nbuf[IWNUMBUF_SIZE];
+  iwitoa(val, nbuf, sizeof(nbuf));
+  return aws4dd_item_update_value(op, path, "N", nbuf);
 }
 
 iwrc aws4dd_item_update_expression_attr_name(struct aws4dd_item_update *op, const char *key, const char *val) {
@@ -1946,6 +1978,17 @@ iwrc aws4dd_batch_write_value(
   return aws4dd_batch_write_array(op, table, path, key, (const char*[]) { val, 0 });
 }
 
+iwrc aws4dd_batch_write_value_i64(
+  struct aws4dd_item_update *op,
+  const char                *table,
+  const char                *path,
+  int64_t                    val
+  ) {
+  char nbuf[IWNUMBUF_SIZE];
+  iwitoa(val, nbuf, sizeof(nbuf));
+  return aws4dd_batch_write_value(op, table, path, "N", nbuf);
+}
+
 iwrc aws4dd_bach_write(
   const struct aws4_request_spec *spec,
   struct aws4dd_batch_write      *op,
@@ -2071,6 +2114,12 @@ iwrc aws4dd_item_delete_value(
     return IW_ERROR_INVALID_ARGS;
   }
   return aws4dd_item_delete_array(op, path, key, (const char*[]) { value, 0 });
+}
+
+iwrc aws4dd_item_delete_value_i64(struct aws4dd_item_delete *op, const char *path, int64_t val) {
+  char nbuf[IWNUMBUF_SIZE];
+  iwitoa(val, nbuf, sizeof(nbuf));
+  return aws4dd_item_delete_value(op, path, "N", nbuf);
 }
 
 iwrc aws4dd_item_delete(
