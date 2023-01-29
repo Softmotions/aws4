@@ -2250,15 +2250,14 @@ static const char* _ecodefn(locale_t locale, uint32_t ecode) {
 }
 
 IW_CONSTRUCTOR void _aws4dd_init(void) {
-  static bool _initialized;
-  if (__sync_bool_compare_and_swap(&_initialized, false, true)) {
-    iwrc rc = iw_init();
-    if (rc) {
-      iwlog_ecode_error3(rc);
-    }
-    rc = iwlog_register_ecodefn(_ecodefn);
-    if (rc) {
-      iwlog_ecode_error3(rc);
-    }
+  iwrc rc = iw_init();
+  if (rc) {
+    iwlog_ecode_error3(rc);
+    abort();
+  }
+  rc = iwlog_register_ecodefn(_ecodefn);
+  if (rc) {
+    iwlog_ecode_error3(rc);
+    abort();
   }
 }

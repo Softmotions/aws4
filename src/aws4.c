@@ -1012,9 +1012,11 @@ IW_CONSTRUCTOR void _aws4_init(void) {
   iwrc rc = iw_init();
   if (rc) {
     iwlog_ecode_error(rc, "AWS4 | Failed to initialize iowow");
+    abort();
   }
   rc = iwlog_register_ecodefn(_ecodefn);
   if (rc) {
     iwlog_ecode_error(rc, "AWS4 | Failed to register ecodefn");
+    abort();
   }
 }
