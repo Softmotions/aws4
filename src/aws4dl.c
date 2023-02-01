@@ -389,10 +389,16 @@ static void _lock_destroy(struct aws4dl_lock *lock) {
     return;
   }
   // Stop heartbeat
+  int fd;
   pthread_mutex_lock(&lock->mtx);
-  if (lock->heartbeat_fd) {
-    iwn_poller_remove(lock->acquire_spec.poller, lock->heartbeat_fd);
+  fd = lock->heartbeat_fd;
+  pthread_mutex_unlock(&lock->mtx);
+
+  if (fd) {
+    iwn_poller_remove(lock->acquire_spec.poller, fd);
   }
+
+  pthread_mutex_lock(&lock->mtx);
   while (lock->heartbeat_fd) {
     int rci = pthread_cond_wait(&lock->cond, &lock->mtx);
     if (rci) {
@@ -559,13 +565,9 @@ iwrc aws4dl_lock_acquire(const struct aws4dl_lock_acquire_spec *acquire_spec, st
   struct aws4dl_lock *lock;
   RCB(finish, lock = iwpool_calloc(sizeof(*lock), pool));
 
-  pthread_mutexattr_t attr;
-  pthread_mutexattr_init(&attr);
-  pthread_mutexattr_settype(&attr, PTHREAD_MUTEX_RECURSIVE);
-  pthread_mutex_init(&lock->mtx, &attr);
-  pthread_mutexattr_destroy(&attr);
-
+  pthread_mutex_init(&lock->mtx, 0);
   pthread_cond_init(&lock->cond, 0);
+
   lock->pool = pool;
   memcpy(&lock->acquire_spec, acquire_spec, sizeof(*acquire_spec));
 
