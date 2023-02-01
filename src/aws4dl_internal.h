@@ -11,8 +11,8 @@ struct aws4dl_lock {
   char     ticket[40];   ///< Acquired lock ticket.
   uint32_t flags;        ///< `_LF_XXX` state flags
 
-  int heartbeat_fd;      ///< Poller heartbeat task file descriptor.
+  int last_heartbeat_fd;
+
   pthread_mutex_t mtx;
   pthread_cond_t  cond;
 };
-

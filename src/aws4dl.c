@@ -266,12 +266,9 @@ finish:
 
 static void _heartbeat_cancel(void *d) {
   struct aws4dl_lock *lock = d;
-
   pthread_mutex_lock(&lock->mtx);
-  if (lock->heartbeat_fd) {
-    lock->heartbeat_fd = 0;
-    pthread_cond_broadcast(&lock->cond);
-  }
+  lock->last_heartbeat_fd = 0;
+  pthread_cond_broadcast(&lock->cond);
   pthread_mutex_unlock(&lock->mtx);
 }
 
@@ -281,6 +278,7 @@ static void _heartbeat_fn(void *d) {
   IWPOOL *pool;
   uint64_t time;
   const char *condition_expression, *val, *upk, *usk;
+  int fd = 0;
 
   struct aws4dl_lock *lock = d;
   struct aws4dd_response *resp = 0;
@@ -326,25 +324,13 @@ static void _heartbeat_fn(void *d) {
 
 finish:
   if (!(lock_spec.flags & AWS4DL_FLAG_HEARTBEAT_ONCE)) {
-    // Engage next tick
-    pthread_mutex_lock(&lock->mtx);
-    if (lock->heartbeat_fd) {
-      int fd = 0;
-      iwrc rc2 = iwn_schedule2(&(struct iwn_scheduler_spec) {
-        .task_fn = _heartbeat_fn,
-        .on_cancel = _heartbeat_cancel,
-        .poller = lock->acquire_spec.poller,
-        .user_data = lock,
-        .timeout_ms = 1000UL * lock_spec.lock_enqueued_ttl_sec / 3,
-      }, &fd);
-      if (!rc2) {
-        lock->heartbeat_fd = fd;
-        pthread_cond_broadcast(&lock->cond);
-      } else {
-        rc = rc2;
-      }
-    }
-    pthread_mutex_unlock(&lock->mtx);
+    RCC(rc, fatal, iwn_schedule2(&(struct iwn_scheduler_spec) {
+      .task_fn = _heartbeat_fn,
+      .on_cancel = _heartbeat_cancel,
+      .poller = lock->acquire_spec.poller,
+      .user_data = lock,
+      .timeout_ms = 1000UL * lock_spec.lock_enqueued_ttl_sec / 3,
+    }, &fd));
   }
 
 fatal:
@@ -354,6 +340,11 @@ fatal:
   aws4dd_item_update_op_destroy(&op);
   aws4dd_response_destroy(&resp);
   iwpool_destroy(pool);
+
+  pthread_mutex_lock(&lock->mtx);
+  lock->last_heartbeat_fd = fd;
+  pthread_cond_broadcast(&lock->cond);
+  pthread_mutex_unlock(&lock->mtx);
 }
 
 static iwrc _heartbeat_start(struct aws4dl_lock *lock) {
@@ -363,24 +354,21 @@ static iwrc _heartbeat_start(struct aws4dl_lock *lock) {
   }
 
   iwrc rc = 0;
-  pthread_mutex_lock(&lock->mtx);
-  if (lock->heartbeat_fd) {
-    rc = IW_ERROR_INVALID_STATE;
-    goto finish;
-  }
-
+  int fd = 0;
   RCC(rc, finish, iwn_schedule2(&(struct iwn_scheduler_spec) {
     .task_fn = _heartbeat_fn,
     .on_cancel = _heartbeat_cancel,
     .poller = lock->acquire_spec.poller,
     .user_data = lock,
     .timeout_ms = 1000UL * lock->acquire_spec.lock_spec.lock_enqueued_ttl_sec / 3,
-  }, &lock->heartbeat_fd));
+  }, &fd));
 
+  pthread_mutex_lock(&lock->mtx);
+  lock->last_heartbeat_fd = fd;
   pthread_cond_broadcast(&lock->cond);
+  pthread_mutex_unlock(&lock->mtx);
 
 finish:
-  pthread_mutex_unlock(&lock->mtx);
   return rc;
 }
 
@@ -388,18 +376,19 @@ static void _lock_destroy(struct aws4dl_lock *lock) {
   if (!lock) {
     return;
   }
+
   // Stop heartbeat
   int fd;
   pthread_mutex_lock(&lock->mtx);
-  fd = lock->heartbeat_fd;
+  fd = lock->last_heartbeat_fd;
   pthread_mutex_unlock(&lock->mtx);
 
-  if (fd) {
+  if (fd) { // Urgently remove last heartbeater
     iwn_poller_remove(lock->acquire_spec.poller, fd);
   }
 
   pthread_mutex_lock(&lock->mtx);
-  while (lock->heartbeat_fd) {
+  while (lock->last_heartbeat_fd) {
     int rci = pthread_cond_wait(&lock->cond, &lock->mtx);
     if (rci) {
       iwrc rc = iwrc_set_errno(IW_ERROR_THREADING_ERRNO, rci);
