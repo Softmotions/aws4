@@ -444,7 +444,6 @@ static iwrc _lock_check(struct aws4dl_lock *lock, bool *out_granted) {
       .key_condition_expression = "#pk = :pk AND begins_with(#sk, :sk)",
       .exclusive_start_key_json = iwxstr_ptr(xstr),
       .limit                    = lock_spec->lock_check_page_size,
-      .scan_index_forward       = true,
       .consistent_read          = true,
     };
 

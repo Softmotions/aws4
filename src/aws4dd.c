@@ -1479,8 +1479,8 @@ iwrc aws4dd_query(
     RCC(rc, finish, jbn_add_item_bool(n, "ConsistentRead", op->spec.consistent_read, 0, pool));
   }
 
-  if (op->spec.scan_index_forward) {
-    RCC(rc, finish, jbn_add_item_bool(n, "ScanIndexForward", op->spec.scan_index_forward, 0, pool));
+  if (op->spec.scan_index_backward) {
+    RCC(rc, finish, jbn_add_item_bool(n, "ScanIndexForward", !op->spec.scan_index_backward, 0, pool));
   }
 
   switch (op->spec.select) {

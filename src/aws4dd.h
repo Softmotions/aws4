@@ -529,7 +529,7 @@ struct aws4dd_query_spec {
   aws4dd_return_consumed_capacity_e return_consumed_capacity;
   aws4dd_select_e select;
   bool     consistent_read;
-  bool     scan_index_forward;
+  bool     scan_index_backward;
   uint32_t limit;
 };
 
