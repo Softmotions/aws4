@@ -1614,13 +1614,13 @@ iwrc aws4dd_scan_array(struct aws4dd_scan *op, const char *path, const char *key
   return _item_put(op->pool, op->n, path, key, values);
 }
 
-iwrc aws4dd_scan_value(struct aws4dd_scan *op, const char *path, const char *key, const char *val) {
-  return aws4dd_scan_array(op, path, key, (const char*[]) {});
+iwrc aws4dd_scan_value(struct aws4dd_scan *op, const char *path, const char *key, const char *value) {
+  return aws4dd_scan_array(op, path, key, (const char*[]) { value, 0 });
 }
 
-iwrc aws4dd_scan_value_i64(struct aws4dd_scan *op, const char *path, int64_t val) {
+iwrc aws4dd_scan_value_i64(struct aws4dd_scan *op, const char *path, int64_t value) {
   char nbuf[IWNUMBUF_SIZE];
-  iwitoa(val, nbuf, sizeof(nbuf));
+  iwitoa(value, nbuf, sizeof(nbuf));
   return aws4dd_scan_value(op, path, "N", nbuf);
 }
 
