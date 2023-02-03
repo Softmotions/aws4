@@ -37,7 +37,6 @@ if(NOT CURL_FOUND)
   message(FATAL_ERROR "Cannot find libcurl library")
 endif()
 
-include(AddIOWOW)
 include(AddIWNET)
 
 set(LINK_LIBS IWNET::static ${CURL_LIBRARIES})
