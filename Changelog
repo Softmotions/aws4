@@ -1,5 +1,6 @@
 aws4 (1.0.2) UNRELEASED;
 
+  * Added connect_attempts_max and connect_attempt_timeout_max to aws4_request_spec.
   * Added convenient dynamodb api methods xxx_value_i64(...)
 
  -- Anton Adamansky <adamansky@gmail.com>  Sun, 29 Jan 2023 22:18:10 +0200

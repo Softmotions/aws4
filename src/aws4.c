@@ -33,7 +33,10 @@ struct aws4_request {
   const char     *service;
   struct xcurlreq xreq;
   struct iwn_url  url;
-  IWPOOL  *pool;
+  IWPOOL *pool;
+
+  unsigned connect_attempt_timeout_sec;
+  unsigned reconnect_attempts_max;
   unsigned flags;
   bool     verbose;
 };
@@ -198,7 +201,7 @@ static iwrc _sr_qs_add(struct _sign_ctx *c) {
   IWPOOL *pool = 0;
   struct iwn_pairs pairs;
 
-  char *buf = 0;
+  char *buf = 0, *nbuf = 0;
   size_t buflen = 0;
 
   size_t len = iwxstr_size(c->xreq->_qxstr);
@@ -224,7 +227,8 @@ static iwrc _sr_qs_add(struct _sign_ctx *c) {
     struct iwn_pair *p = parr[i];
     len = iwn_url_encoded_len(p->key, p->key_len);
     if (len > buflen) {
-      RCB(finish, buf = realloc(buf, len));
+      RCB(finish, nbuf = realloc(buf, len));
+      buf = nbuf;
       buflen = len;
     }
     if (i) {
@@ -236,7 +240,8 @@ static iwrc _sr_qs_add(struct _sign_ctx *c) {
     if (p->val_len) {
       len = iwn_url_encoded_aws_len(p->val, p->val_len);
       if (len > buflen) {
-        RCB(finish, buf = realloc(buf, len));
+        RCB(finish, nbuf = realloc(buf, len));
+        buf = nbuf;
         buflen = len;
       }
       iwn_url_encode_aws(p->val, p->val_len, buf, buflen);
@@ -686,6 +691,17 @@ iwrc aws4_request_create(const struct aws4_request_spec *spec, struct aws4_reque
   iwrc rc = 0;
   req->pool = pool;
   req->flags = spec->flags;
+
+  req->connect_attempt_timeout_sec = spec->connect_attempt_timeout_sec;
+  if (!req->connect_attempt_timeout_sec) {
+    req->connect_attempt_timeout_sec = 10U;
+  }
+
+  req->reconnect_attempts_max = spec->reconnect_attempts_max;
+  if (!req->reconnect_attempts_max) {
+    req->reconnect_attempts_max = 3U;
+  }
+
   req->verbose = (spec->flags & AWS_REQUEST_VERBOSE) != 0;
 
   RCC(rc, finish, _creds_load(spec, req));
@@ -820,6 +836,10 @@ iwrc aws4_request_perform(CURL *curl, struct aws4_request *req, char **out, int 
     curl_easy_setopt(curl, CURLOPT_VERBOSE, 1L);
   }
 
+  if (req->connect_attempt_timeout_sec) {
+    curl_easy_setopt(curl, CURLOPT_CONNECTTIMEOUT, req->connect_attempt_timeout_sec);
+  }
+
   XCC(cc, finish, curl_easy_setopt(curl, CURLOPT_URL, req->aws_url));
   XCC(cc, finish, curl_easy_setopt(curl, CURLOPT_WRITEFUNCTION, xcurl_body_write_xstr));
   XCC(cc, finish, curl_easy_setopt(curl, CURLOPT_WRITEDATA, xstr));
@@ -841,7 +861,7 @@ iwrc aws4_request_perform(CURL *curl, struct aws4_request *req, char **out, int 
     XCC(cc, finish, curl_easy_setopt(curl, CURLOPT_HTTPHEADER, req->xreq.headers));
   }
 
-  for (int retry = 0; retry < 3; ++retry) {
+  for (int retry = 0; retry < req->reconnect_attempts_max; ++retry) {
     iwxstr_clear(xstr);
     iwlist_destroy_keep(&resp_headers);
 
@@ -872,7 +892,7 @@ iwrc aws4_request_perform(CURL *curl, struct aws4_request *req, char **out, int 
 
     break;
   }
-  
+
   if (req->verbose) {
     iwlog_info("AWS4 | Response: %s", iwxstr_ptr(xstr));
   }

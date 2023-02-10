@@ -18,8 +18,8 @@
 #define AWS_REQUEST_ACCEPT_ANY_STATUS_CODE 0x10U ///< Accept any HTTP status code from AWS HTTP API.
                                                  ///  If flag is set AWS API HTTP response with not OK status code
                                                  ///  will not cause request functions to return
-                                                 // `AWS4_API_REQUEST_ERROR`
-                                                 ///  and reponse body will be parsed as JSON.
+// `AWS4_API_REQUEST_ERROR`
+///  and reponse body will be parsed as JSON.
 #define AWS_SERVICE_ALL (AWS_SERVICE_S3 | AWS_SERVICE_DYNAMODB)
 
 
@@ -33,16 +33,19 @@ struct aws4_request;
 
 /// AWS Cloud request connection speciication.
 struct aws4_request_spec {
-  CURL *curl;                     ///< Optional CURL handle. If specified, a caller user must
-                                  ///  release all allocated resources by `curl_easy_cleanup()` after API usage.
-                                  ///  Otherwise, a new CURL handle will be created and released AWS request routine.
-  const char *aws_region;         ///< AWS region. Required if region is not specified in .aws/config.
-  const char *aws_config_profile; ///< AWS configuration profile name. Optional.
-  const char *aws_url;            ///< If not set endpoint URL is computed as follows:
-                                  ///  https://<service>.<aws_region>.amazonaws.com
-  const char *aws_key;            ///< AWS service access key. If not set, key is read from .aws/credentials.
-  const char *aws_secret_key;     ///< AWS service secret key. If not set, key is read from .aws/credentials.
-  unsigned    flags;              ///< AWS_SERVICE_XXX, AWS_REQUEST_XXX flag is required.
+  /// Optional CURL handle. If specified, a caller user must
+  /// release all allocated resources by `curl_easy_cleanup()` after API usage.
+  /// Otherwise, a new CURL handle will be created and released AWS request routine.
+  CURL       *curl;
+  const char *aws_region;                  ///< AWS region. Required if region is not specified in .aws/config.
+  const char *aws_config_profile;          ///< AWS configuration profile name. Optional.
+  const char *aws_url;                     ///< If not set endpoint URL is computed as follows:
+                                           ///  https://<service>.<aws_region>.amazonaws.com
+  const char *aws_key;                     ///< AWS service access key. If not set, key is read from .aws/credentials.
+  const char *aws_secret_key;              ///< AWS service secret key. If not set, key is read from .aws/credentials.
+  unsigned    connect_attempt_timeout_sec; ///< HTTP connection timeout in seconds. Default 10.
+  unsigned    reconnect_attempts_max;      ///< Max number of reconnect retries. Default 3.
+  unsigned    flags;                       ///< AWS_SERVICE_XXX, AWS_REQUEST_XXX flag is required.
 };
 
 struct aws4_request_payload {
@@ -53,8 +56,8 @@ struct aws4_request_payload {
 };
 
 struct aws4_request_json_payload {
-  const char    *amz_target;
-  JBL_NODE json;
+  const char *amz_target;
+  JBL_NODE    json;
 };
 
 struct aws4_response {
