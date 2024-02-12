@@ -439,7 +439,7 @@ static iwrc _sign(struct aws4_request *req) {
 
   struct _sign_ctx c = {
     .xreq = xreq,
-    .req  = req,
+    .req = req,
     .xstr = xstr
   };
 
@@ -870,8 +870,8 @@ iwrc aws4_request_perform(CURL *curl, struct aws4_request *req, char **out, int 
       iwlog_warn("AWS4 | HTTP request failed: %s %s%s",
                  req->aws_url,
                  curl_easy_strerror(cc),
-                 retry < 2 ? " retrying in 3 sec" : "");
-      if (retry < 2) {
+                 retry < req->reconnect_attempts_max - 1 ? " retrying in 3 sec" : "");
+      if (retry < req->reconnect_attempts_max - 1) {
         sleep(RETRY_PAUSE);
         continue;
       }
