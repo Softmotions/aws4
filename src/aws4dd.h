@@ -2,7 +2,7 @@
 #include "aws4.h"
 #include <iowow/iwpool.h>
 
-IW_EXTERN_C_START
+IW_EXTERN_C_START;
 
 #define AWS4DD_RESOURCE_TABLE 0x01U
 #define AWS4DD_RESOURCE_ATTR  0x02U
@@ -681,4 +681,4 @@ IW_EXPORT iwrc aws4dd_ttl_update(
   bool                            enabled,
   bool                           *out_enabled);
 
-IW_EXTERN_C_END
+IW_EXTERN_C_END;

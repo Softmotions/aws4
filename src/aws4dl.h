@@ -4,6 +4,8 @@
 
 #include <iwnet/iwn_poller.h>
 
+IW_EXTERN_C_START;
+
 #define AWS4DL_FLAG_HEARTBEAT_NONE    0x01U ///< Do not perform periodical locking heartbeat.
 #define AWS4DL_FLAG_HEARTBEAT_ONCE    0x02U ///< Do only one locking heartbeat iteration. Used for testing.
 #define AWS4DL_FLAG_TABLE_TTL_NOAUTO  0x04U ///< Disable DynamoDB TTL feature for `expiresAt` attribute.
@@ -42,3 +44,5 @@ iwrc aws4dl_lock_acquire(const struct aws4dl_lock_acquire_spec *spec, struct aws
 
 /// Releases the lock previously acquired with `aws4dl_lock_acquire()` and all of its resources.
 iwrc aws4dl_lock_release(struct aws4dl_lock **lpp);
+
+IW_EXTERN_C_END;

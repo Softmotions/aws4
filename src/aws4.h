@@ -10,6 +10,8 @@
 
 #include <curl/curl.h>
 
+IW_EXTERN_C_START;
+
 #define AWS_SERVICE_DYNAMODB   0x01U             ///< DynamoDB service accessed
 #define AWS_SERVICE_S3         0x02U             ///< AWS S3 service accessed
 #define AWS_REQUEST_VERBOSE    0x04U             ///< Turn on verbose logging for request.
@@ -96,3 +98,5 @@ IW_EXPORT void aws4_request_destroy(struct aws4_request **reqp);
 IW_EXPORT iwrc aws4_request_payload_set(struct aws4_request *req, const struct aws4_request_payload *payload);
 
 IW_EXPORT iwrc aws4_request_payload_json_set(struct aws4_request *req, const char *amz_target, JBL_NODE json);
+
+IW_EXTERN_C_END;
