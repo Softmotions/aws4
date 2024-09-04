@@ -147,10 +147,10 @@ IW_STATIC_NTESTS iwrc _ticket_acquire(struct aws4dl_lock *lock) {
   rspec.flags |= AWS_REQUEST_ACCEPT_ANY_STATUS_CODE;
 
   struct aws4dd_item_update_spec uspec = {
-    .table_name        = lock->acquire_spec.lock_spec.table_name,
+    .table_name = lock->acquire_spec.lock_spec.table_name,
     .update_expression = "SET ticketNumber = ticketNumber + :ticketNumber",
-    .ret               = {
-      .values          = AWS4DD_RETURN_VALUES_UPDATED_NEW
+    .ret = {
+      .values = AWS4DD_RETURN_VALUES_UPDATED_NEW
     }
   };
   RCB(finish, uspec.condition_expression = iwpool_printf(lpool, "attribute_exists(%s)",
@@ -440,11 +440,11 @@ static iwrc _lock_check(struct aws4dl_lock *lock, bool *out_granted) {
     JBL_NODE n, items, nsk;
 
     struct aws4dd_query_spec spec = {
-      .table_name               = lock_spec->table_name,
+      .table_name = lock_spec->table_name,
       .key_condition_expression = "#pk = :pk AND begins_with(#sk, :sk)",
       .exclusive_start_key_json = iwxstr_ptr(xstr),
-      .limit                    = lock_spec->lock_check_page_size,
-      .consistent_read          = true,
+      .limit = lock_spec->lock_check_page_size,
+      .consistent_read = true,
     };
 
     RCC(rc, finish, aws4dd_query_op(&op, &spec));

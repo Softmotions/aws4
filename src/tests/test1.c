@@ -21,11 +21,11 @@ static struct iwn_poller *poller;
 static pthread_barrier_t start_br;
 
 static struct aws4_request_spec request_spec = {
-  .flags          = AWS_SERVICE_DYNAMODB | AWS_REQUEST_VERBOSE,
-  .aws_region     = "us-east-1",
-  .aws_key        = "fakeMyKeyId",
+  .flags = AWS_SERVICE_DYNAMODB | AWS_REQUEST_VERBOSE,
+  .aws_region = "us-east-1",
+  .aws_key = "fakeMyKeyId",
   .aws_secret_key = "fakeSecretAccessKey",
-  .aws_url        = "http://localhost:8000"
+  .aws_url = "http://localhost:8000"
 };
 
 static void _on_signal(int signo) {

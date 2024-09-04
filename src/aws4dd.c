@@ -761,8 +761,8 @@ iwrc aws4dd_table_update_index_update(
     return IW_ERROR_INVALID_ARGS;
   }
   struct aws4dd_index_spec ispec = {
-    .name                 = iwpool_strdup2(op->pool, name),
-    .read_capacity_units  = read_capacity_units,
+    .name = iwpool_strdup2(op->pool, name),
+    .read_capacity_units = read_capacity_units,
     .write_capacity_units = write_capacity_units,
   };
   if (!ispec.name) {

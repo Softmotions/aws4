@@ -21,11 +21,11 @@ static struct iwn_poller *poller;
 static pthread_barrier_t start_br;
 
 static struct aws4_request_spec request_spec = {
-  .flags          = AWS_SERVICE_DYNAMODB, // | AWS_REQUEST_VERBOSE,
-  .aws_region     = "us-east-1",
-  .aws_key        = "fakeMyKeyId",
+  .flags = AWS_SERVICE_DYNAMODB,          // | AWS_REQUEST_VERBOSE,
+  .aws_region = "us-east-1",
+  .aws_key = "fakeMyKeyId",
   .aws_secret_key = "fakeSecretAccessKey",
-  .aws_url        = "http://localhost:8000"
+  .aws_url = "http://localhost:8000"
 };
 
 static void _on_signal(int signo) {
@@ -68,13 +68,13 @@ static iwrc _test_lock_acquire_release1(void) {
   iwrc rc = 0;
   struct aws4dl_lock *lock = 0;
   struct aws4dl_lock_acquire_spec spec = {
-    .request                  = request_spec,
-    .poller                   = poller,
-    .lock_spec                = {
-      .lock_enqueued_ttl_sec  = 100000, // high enough
+    .request = request_spec,
+    .poller = poller,
+    .lock_spec = {
+      .lock_enqueued_ttl_sec = 100000,  // high enough
       .lock_enqueued_wait_sec = 100000,
-      .lock_enqueued_poll_ms  = 100000000,
-      .flags                  = AWS4DL_FLAG_HEARTBEAT_NONE | AWS4DL_FLAG_TABLE_TTL_NOAUTO,
+      .lock_enqueued_poll_ms = 100000000,
+      .flags = AWS4DL_FLAG_HEARTBEAT_NONE | AWS4DL_FLAG_TABLE_TTL_NOAUTO,
     }
   };
 
@@ -92,18 +92,18 @@ finish:
 static iwrc _test_lock_acquire_release2(void) {
   iwrc rc = 0;
   struct aws4dl_lock_acquire_spec exp_spec = {
-    .request                  = request_spec,
-    .poller                   = poller,
-    .lock_spec                = {
-      .table_name             = "aws4dl",
-      .resource_name          = "r",
-      .pk_name                = "pk",
-      .sk_name                = "sk",
-      .lock_check_page_size   = 10,
-      .lock_enqueued_ttl_sec  = 0,
+    .request = request_spec,
+    .poller = poller,
+    .lock_spec = {
+      .table_name = "aws4dl",
+      .resource_name = "r",
+      .pk_name = "pk",
+      .sk_name = "sk",
+      .lock_check_page_size = 10,
+      .lock_enqueued_ttl_sec = 0,
       .lock_enqueued_wait_sec = 1,
-      .lock_enqueued_poll_ms  = 500,
-      .flags                  = AWS4DL_FLAG_HEARTBEAT_NONE | AWS4DL_FLAG_TABLE_TTL_NOAUTO,
+      .lock_enqueued_poll_ms = 500,
+      .flags = AWS4DL_FLAG_HEARTBEAT_NONE | AWS4DL_FLAG_TABLE_TTL_NOAUTO,
     }
   };
 
@@ -132,15 +132,15 @@ static iwrc _test_lock_acquire_release2(void) {
   // Now try to get a lock and iterate through expired records.
   struct aws4dl_lock *lock = 0;
   struct aws4dl_lock_acquire_spec spec = {
-    .request                  = request_spec,
-    .poller                   = poller,
-    .lock_spec                = {
-      .table_name             = "aws4dl",
-      .lock_enqueued_ttl_sec  = 10,
+    .request = request_spec,
+    .poller = poller,
+    .lock_spec = {
+      .table_name = "aws4dl",
+      .lock_enqueued_ttl_sec = 10,
       .lock_enqueued_wait_sec = 100000,
-      .lock_enqueued_poll_ms  = 100000000,
-      .lock_check_page_size   = 10,
-      .flags                  = AWS4DL_FLAG_TABLE_TTL_NOAUTO,
+      .lock_enqueued_poll_ms = 100000000,
+      .lock_check_page_size = 10,
+      .flags = AWS4DL_FLAG_TABLE_TTL_NOAUTO,
     }
   };
 
