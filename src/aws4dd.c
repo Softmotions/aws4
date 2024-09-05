@@ -71,8 +71,7 @@ iwrc aws4dd_resource_name_check(const char *name, int resource) {
 
 iwrc aws4dd_table_create_op(
   struct aws4dd_table_create           **rpp,
-  const struct aws4dd_table_create_spec *spec
-  ) {
+  const struct aws4dd_table_create_spec *spec) {
   if (!rpp || !spec || !spec->name || !spec->partition_key) {
     return IW_ERROR_INVALID_ARGS;
   }
@@ -301,8 +300,7 @@ fail:
 iwrc aws4dd_table_create(
   const struct aws4_request_spec *spec,
   struct aws4dd_table_create     *op,
-  struct aws4dd_response        **rpp
-  ) {
+  struct aws4dd_response        **rpp) {
   if (!spec || !op || !rpp) {
     return IW_ERROR_INVALID_ARGS;
   }
@@ -501,8 +499,7 @@ struct aws4dd_table_update {
 
 iwrc aws4dd_table_update_op(
   struct aws4dd_table_update           **rpp,
-  const struct aws4dd_table_update_spec *spec
-  ) {
+  const struct aws4dd_table_update_spec *spec) {
   if (!rpp || !spec || !spec->name) {
     return IW_ERROR_INVALID_ARGS;
   }
@@ -612,8 +609,7 @@ iwrc aws4dd_table_update_index_delete(struct aws4dd_table_update *op, const char
 iwrc aws4dd_table_update(
   const struct aws4_request_spec *spec,
   struct aws4dd_table_update     *op,
-  struct aws4dd_response        **rpp
-  ) {
+  struct aws4dd_response        **rpp) {
   if (!spec || !op || !rpp) {
     return IW_ERROR_INVALID_ARGS;
   }
@@ -755,8 +751,7 @@ iwrc aws4dd_table_update_index_update(
   struct aws4dd_table_update *op,
   const char                 *name,
   long                        read_capacity_units,
-  long                        write_capacity_units
-  ) {
+  long                        write_capacity_units) {
   if (!op || !name || read_capacity_units < 1 || write_capacity_units < 1) {
     return IW_ERROR_INVALID_ARGS;
   }
@@ -851,8 +846,7 @@ finish:
 iwrc aws4dd_tag_resource(
   const struct aws4_request_spec *spec,
   const char                     *resource_arn,
-  const char                     *tag_pairs[]
-  ) {
+  const char                     *tag_pairs[]) {
   if (!spec || !resource_arn || !tag_pairs) {
     return IW_ERROR_INVALID_ARGS;
   }
@@ -888,8 +882,7 @@ finish:
 iwrc aws4dd_untag_resource(
   const struct aws4_request_spec *spec,
   const char                     *resource_arn,
-  const char                     *tag_keys[]
-  ) {
+  const char                     *tag_keys[]) {
   if (!spec || !resource_arn || !tag_keys) {
     return IW_ERROR_INVALID_ARGS;
   }
@@ -925,8 +918,7 @@ iwrc aws4dd_tables_list(
   const struct aws4_request_spec *spec,
   const char                     *exclusive_start_table_name,
   uint32_t                        limit,
-  struct aws4dd_response        **rpp
-  ) {
+  struct aws4dd_response        **rpp) {
   if (!spec || !rpp) {
     return IW_ERROR_INVALID_ARGS;
   }
@@ -1060,8 +1052,7 @@ finish:
 
 static iwrc _item_put(
   IWPOOL *pool, JBL_NODE target, const char *path, const char *key,
-  const char **vals
-  ) {
+  const char **vals) {
   iwrc rc = 0;
   JBL_NODE n;
   JBL_PATCH p = { .path = path, .op = JBP_ADD_CREATE };
@@ -1080,8 +1071,7 @@ iwrc aws4dd_item_put_array(
   struct aws4dd_item_put *op,
   const char             *path,
   const char             *key,
-  const char            **vals
-  ) {
+  const char            **vals) {
   if (!op || !path || !key || !vals) {
     return IW_ERROR_INVALID_ARGS;
   }
@@ -1092,8 +1082,7 @@ iwrc aws4dd_item_put_value(
   struct aws4dd_item_put *op,
   const char             *path,
   const char             *key,
-  const char             *val
-  ) {
+  const char             *val) {
   return aws4dd_item_put_array(op, path, key, (const char*[]) { val, 0 });
 }
 
@@ -1119,8 +1108,7 @@ finish:
 iwrc aws4dd_item_put(
   const struct aws4_request_spec *spec,
   struct aws4dd_item_put         *op,
-  struct aws4dd_response        **rpp
-  ) {
+  struct aws4dd_response        **rpp) {
   if (!spec || !op || !rpp) {
     return IW_ERROR_INVALID_ARGS;
   }
@@ -1249,8 +1237,7 @@ iwrc aws4dd_item_get_key_array(
   struct aws4dd_item_get *op,
   const char             *path,
   const char             *key,
-  const char            **values
-  ) {
+  const char            **values) {
   if (!op || !path || !key || !values) {
     return IW_ERROR_INVALID_ARGS;
   }
@@ -1261,8 +1248,7 @@ iwrc aws4dd_item_get_key_value(
   struct aws4dd_item_get *op,
   const char             *path,
   const char             *key,
-  const char             *value
-  ) {
+  const char             *value) {
   return aws4dd_item_get_key_array(op, path, key, (const char*[]) { value, 0 });
 }
 
@@ -1275,8 +1261,7 @@ iwrc aws4dd_item_get_key_value_i64(struct aws4dd_item_get *op, const char *path,
 iwrc aws4dd_item_get(
   const struct aws4_request_spec *spec,
   struct aws4dd_item_get         *op,
-  struct aws4dd_response        **rpp
-  ) {
+  struct aws4dd_response        **rpp) {
   if (!spec || !op || !rpp) {
     return IW_ERROR_INVALID_ARGS;
   }
@@ -1387,8 +1372,7 @@ void aws4dd_query_op_destroy(struct aws4dd_query **opp) {
 iwrc aws4dd_query_expression_attr_name(
   struct aws4dd_query *op,
   const char          *key,
-  const char          *value
-  ) {
+  const char          *value) {
   if (!op || !key || !value) {
     return IW_ERROR_INVALID_ARGS;
   }
@@ -1437,8 +1421,7 @@ finish:
 
 iwrc aws4dd_query(
   const struct aws4_request_spec *spec,
-  struct aws4dd_query *op, struct aws4dd_response **rpp
-  ) {
+  struct aws4dd_query *op, struct aws4dd_response **rpp) {
   if (!spec || !op || !rpp) {
     return IW_ERROR_INVALID_ARGS;
   }
@@ -1769,8 +1752,7 @@ iwrc aws4dd_item_update_array(
   struct aws4dd_item_update *op,
   const char                *path,
   const char                *key,
-  const char               **vals
-  ) {
+  const char               **vals) {
   if (!op || !path || !key || !vals) {
     return IW_ERROR_INVALID_ARGS;
   }
@@ -1781,8 +1763,7 @@ iwrc aws4dd_item_update_value(
   struct aws4dd_item_update *op,
   const char                *path,
   const char                *key,
-  const char                *val
-  ) {
+  const char                *val) {
   return aws4dd_item_update_array(op, path, key, (const char*[]) { val, 0 });
 }
 
@@ -1808,8 +1789,7 @@ finish:
 iwrc aws4dd_item_update(
   const struct aws4_request_spec *spec,
   struct aws4dd_item_update      *op,
-  struct aws4dd_response        **rpp
-  ) {
+  struct aws4dd_response        **rpp) {
   if (!spec || !op || !rpp) {
     return IW_ERROR_INVALID_ARGS;
   }
@@ -1896,8 +1876,7 @@ struct aws4dd_batch_write {
 
 iwrc aws4dd_batch_write_op(
   struct aws4dd_batch_write           **opp,
-  const struct aws4dd_batch_write_spec *spec
-  ) {
+  const struct aws4dd_batch_write_spec *spec) {
   iwrc rc = 0;
   if (!opp || !spec) {
     return IW_ERROR_INVALID_ARGS;
@@ -1939,8 +1918,7 @@ iwrc aws4dd_batch_write_array(
   const char                *table,
   const char                *path,
   const char                *key,
-  const char               **vals
-  ) {
+  const char               **vals) {
   if (!op || !table || !path || !key || !vals) {
     return IW_ERROR_INVALID_ARGS;
   }
@@ -1973,8 +1951,7 @@ iwrc aws4dd_batch_write_value(
   const char                *table,
   const char                *path,
   const char                *key,
-  const char                *val
-  ) {
+  const char                *val) {
   return aws4dd_batch_write_array(op, table, path, key, (const char*[]) { val, 0 });
 }
 
@@ -1982,8 +1959,7 @@ iwrc aws4dd_batch_write_value_i64(
   struct aws4dd_item_update *op,
   const char                *table,
   const char                *path,
-  int64_t                    val
-  ) {
+  int64_t                    val) {
   char nbuf[IWNUMBUF_SIZE];
   iwitoa(val, nbuf, sizeof(nbuf));
   return aws4dd_batch_write_value(op, table, path, "N", nbuf);
@@ -1992,8 +1968,7 @@ iwrc aws4dd_batch_write_value_i64(
 iwrc aws4dd_bach_write(
   const struct aws4_request_spec *spec,
   struct aws4dd_batch_write      *op,
-  struct aws4dd_response        **rpp
-  ) {
+  struct aws4dd_response        **rpp) {
   if (!spec || !op || !rpp) {
     return IW_ERROR_INVALID_ARGS;
   }
@@ -2098,8 +2073,7 @@ void aws4dd_item_delete_op_destroy(struct aws4dd_item_delete **opp) {
 
 iwrc aws4dd_item_delete_array(
   struct aws4dd_item_delete *op, const char *path,
-  const char *key, const char **values
-  ) {
+  const char *key, const char **values) {
   if (!op || !path || !key || !values) {
     return IW_ERROR_INVALID_ARGS;
   }
@@ -2108,8 +2082,7 @@ iwrc aws4dd_item_delete_array(
 
 iwrc aws4dd_item_delete_value(
   struct aws4dd_item_delete *op, const char *path,
-  const char *key, const char *value
-  ) {
+  const char *key, const char *value) {
   if (!op || !path || !key || !value) {
     return IW_ERROR_INVALID_ARGS;
   }
@@ -2125,8 +2098,7 @@ iwrc aws4dd_item_delete_value_i64(struct aws4dd_item_delete *op, const char *pat
 iwrc aws4dd_item_delete(
   const struct aws4_request_spec *spec,
   struct aws4dd_item_delete      *op,
-  struct aws4dd_response        **rpp
-  ) {
+  struct aws4dd_response        **rpp) {
   if (!spec || !op || !rpp) {
     return IW_ERROR_INVALID_ARGS;
   }
@@ -2193,8 +2165,7 @@ iwrc aws4dd_ttl_update(
   const char                     *table_name,
   const char                     *attribute_name,
   bool                            enabled,
-  bool                           *out_enabled
-  ) {
+  bool                           *out_enabled) {
   if (!table_name || !attribute_name) {
     return IW_ERROR_INVALID_ARGS;
   }

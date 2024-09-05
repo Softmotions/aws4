@@ -410,8 +410,7 @@ static void _sr_fill_request_hash(IWXSTR *xstr, char out[static br_sha256_SIZE *
 static void _hmac(
   const char *key, ssize_t key_len,
   const char *data, ssize_t data_len,
-  char out_buf[br_sha256_SIZE]
-  ) {
+  char out_buf[br_sha256_SIZE]) {
   if (key_len < 0) {
     key_len = strlen(key);
   }
@@ -912,8 +911,7 @@ iwrc aws4_request_raw(
   const struct aws4_request_spec    *spec,
   const struct aws4_request_payload *payload,
   char                             **out,
-  int                               *out_scode
-  ) {
+  int                               *out_scode) {
   if (!spec || !out) {
     return IW_ERROR_INVALID_ARGS;
   }
@@ -960,8 +958,7 @@ iwrc aws4_request_raw_json_get(
   const struct aws4_request_payload *payload,
   IWPOOL                            *pool,
   JBL_NODE                          *out,
-  int                               *out_scode
-  ) {
+  int                               *out_scode) {
   if (!spec || !pool || !out) {
     return IW_ERROR_INVALID_ARGS;
   }
@@ -982,8 +979,7 @@ iwrc aws4_request_json(
   const struct aws4_request_json_payload *json_payload,
   IWPOOL                                 *pool,
   JBL_NODE                               *out,
-  int                                    *out_scode
-  ) {
+  int                                    *out_scode) {
   if (!spec || !pool || !out || (json_payload && !json_payload->json)) {
     return IW_ERROR_INVALID_ARGS;
   }
